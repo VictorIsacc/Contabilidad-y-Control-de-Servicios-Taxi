@@ -1,10 +1,13 @@
 {
   "name": "Contabilidad y Control de Servicios Taxi",
   "short_name": "Control Taxi",
+  "id": "./index.html",
   "description": "Contabilidad y Control de Servicios Taxi · Jornada Taxi",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#0b1220",
   "theme_color": "#101827",
   "lang": "es",

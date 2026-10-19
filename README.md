@@ -105,8 +105,15 @@ El cálculo utiliza el **total contabilizado**, descontando primero las comision
 
 Al exportar informes PDF diarios o mensuales, aparece una ventana con un nombre de archivo propuesto automáticamente según la fecha y hora de generación, el periodo y el tipo de informe. Se puede editar antes de descargar. Los caracteres no válidos para nombres de archivo se sustituyen y `.pdf` se añade automáticamente. No cambia los datos de las jornadas.
 
-### Ajuste v1.8.3
+### Ajuste v1.8.4
 La cuadrícula mantiene dos columnas y el último botón (Concertado) ocupa la casilla izquierda de la última fila, dejando la derecha libre.
 
 
-Novedad v1.8.3: botón de Instrucciones con guía visual de uso básico y posibilidades de la app.
+Novedad v1.8.4: botón de Instrucciones con guía visual de uso básico y posibilidades de la app.
+
+
+## Corrección de pantalla e instalación v1.8.4
+
+La pantalla principal utiliza el alto útil del móvil y dos columnas en orientación vertical. Los botones de registro cambian su altura para que puedan verse sin desplazar el contenido en pantallas habituales. En dispositivos de menos de 590 px de alto se mantiene el desplazamiento como opción de seguridad para no hacer botones demasiado pequeños. Las ventanas de informes, historial e instrucciones siguen siendo desplazables.
+
+El manifiesto mantiene la identidad de la PWA y el modo standalone. El service worker utiliza ahora una caché nueva y consulta la red primero cuando existe conexión para evitar que versiones antiguas queden bloqueadas. Para ver el resultado en Android, refresca la URL con Chrome y abre la aplicación instalada desde su icono. Si Android dice que ya está instalada, comprueba el cajón de aplicaciones antes de crear un acceso directo nuevo. No borres almacenamiento ni desinstales sin exportar una copia JSON de las jornadas. La instalación standalone requiere HTTPS (por ejemplo GitHub Pages) y Chrome compatible.
