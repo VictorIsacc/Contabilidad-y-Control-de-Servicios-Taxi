@@ -10,6 +10,7 @@ const TYPES = [
 ];
 const METHODS = {pidetaxi:['app','efectivo','tpv'],uber:['app','efectivo','tpv'],freenow:['app','efectivo','tpv'],concertado:['efectivo','tpv']};
 const METHOD_NAMES = {app:'App',efectivo:'Efectivo',tpv:'TPV'};
+const METHOD_UI={efectivo:'💵 Efectivo',tpv:'💳 Tarjeta / TPV',app:'📱 App'};
 const COMMISSION_RATES = {imbric:12,joinup:10};
 const commissionsOn = session => session?.commissionEnabled === true;
 const commissionCents = (svc,session) => commissionsOn(session) && COMMISSION_RATES[svc.type] ? Math.round(svc.amountCents * COMMISSION_RATES[svc.type] / 100) : 0;
@@ -55,8 +56,8 @@ function appendSummaryLine(element,label,value,final=false){
 }
 function renderCollections(element,session){
   const c=collections(session);element.replaceChildren();const h=document.createElement('h3');h.textContent='Quién ha cobrado los servicios';element.append(h);
-  appendSummaryLine(element,'Efectivo cobrado por el chófer',money(c.cash));
-  appendSummaryLine(element,'Cobrado por el jefe (App, TPV y abonados)',money(c.boss));
+  appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(c.cash));
+  appendSummaryLine(element,'📱 💳 Cobrado por el jefe (App, TPV y abonados)',money(c.boss));
   if(c.unclassified)appendSummaryLine(element,'Cobros antiguos sin clasificar',money(c.unclassified));
   const note=document.createElement('p');note.className='hint';note.textContent='Imbric y Join Up también los cobra el jefe. Cobros mostrados en bruto.';element.append(note);
 }
@@ -132,7 +133,7 @@ function updateCommissionPreview(){
  $('commissionDeduction').textContent=raw===null?'—':'−'+money(ded);
  $('commissionNet').textContent=raw===null?'—':money(raw-ded);
 }
-function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=({efectivo:'💵 Efectivo',tpv:'💳 Tarjeta / TPV',app:'📱 App'})[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}}
+function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=METHOD_UI[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}}
 function parseAmount(raw){
   const cleaned=raw.trim().replace(/\s/g,'').replace(/€/g,'');
   // Accept 1.234,56, 1234.56 and 12,50, but reject ambiguous repeated separators.
@@ -194,7 +195,7 @@ function renderDriverLines(element,session){
  element.replaceChildren();const h=document.createElement('h3');h.textContent='Ganancias del conductor';element.append(h);
  for(const [label,value] of data)appendSummaryLine(element,label,value);
  const result=settlement(session);
- appendSummaryLine(element,'Efectivo cobrado por el chófer',money(result.cash));
+ appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(result.cash));
  appendSummaryLine(element,settlementLabel(result),result.ready?money(Math.abs(result.balance)):'Sin calcular',true);
  const note=document.createElement('p');note.className='hint';note.textContent='Ganancia menos efectivo cobrado. No descuenta entregas ni anticipos ya realizados.';element.append(note);
 }
@@ -219,7 +220,7 @@ function showList(session){
    const items=session.services.filter(x=>x.paymentMethod===method);
    if(!items.length)continue;
    const b=document.createElement('div');b.className='method-total';
-   b.textContent=METHOD_NAMES[method]+' · '+money(items.reduce((n,x)=>n+accountingValue(x,session),0));byMethod.append(b);
+   b.textContent=METHOD_UI[method]+' · '+money(items.reduce((n,x)=>n+accountingValue(x,session),0));byMethod.append(b);
  }
  const div=$('serviceList');div.replaceChildren();
  if(!session.services.length){div.innerHTML='<div class="empty">Todavía no hay servicios registrados.</div>';}else{
@@ -227,7 +228,7 @@ function showList(session){
    const row=document.createElement('div');row.className='service-row';
    const time=document.createElement('span');time.className='service-time';
    time.textContent=new Date(svc.at).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-   const label=document.createElement('span');label.className='service-name';label.textContent=serviceLabel(svc);
+   const label=document.createElement('span');label.className='service-name';label.textContent=nameType(svc.type)+(svc.paymentMethod?' · '+(METHOD_UI[svc.paymentMethod]||svc.paymentMethod):'');
    const amount=document.createElement('span');amount.className='service-amount';
    const comm=commissionCents(svc,session);
    if(commissionsOn(session)&&COMMISSION_RATES[svc.type]){amount.innerHTML=`<span class="amount-gross">Bruto ${money(svc.amountCents)}</span><span class="amount-commission">Comisión −${money(comm)}</span><span class="amount-net">Neto ${money(netCents(svc,session))}</span>`;}
@@ -358,11 +359,11 @@ async function refreshMonth(){
   $('monthMeanSession').textContent=money(m.averageSession);$('monthCommission').textContent=money(m.commission);
   $('monthDriver').hidden=!m.driverSessions.length;
   if(m.driverSessions.length){const d=$('monthDriver');d.replaceChildren();const h=document.createElement('h3');h.textContent='Ganancias del conductor';d.append(h);
-    for(const [a,b] of [['Jornadas con porcentaje configurado',String(m.driverSessions.length)+' / '+String(m.sessions.length)],['Participación acumulada',money(m.driverParticipation)],['Seguros descontados','−'+money(m.insurance)],['GANANCIA DEL PERIODO',money(m.driverTotal)],['Efectivo (jornadas con porcentaje)',money(m.settlement.cash)],['Cobrado por el jefe (jornadas con porcentaje)',money(m.settlement.boss)]])appendSummaryLine(d,a,b);
+    for(const [a,b] of [['Jornadas con porcentaje configurado',String(m.driverSessions.length)+' / '+String(m.sessions.length)],['Participación acumulada',money(m.driverParticipation)],['Seguros descontados','−'+money(m.insurance)],['GANANCIA DEL PERIODO',money(m.driverTotal)],['💵 Efectivo (jornadas con porcentaje)',money(m.settlement.cash)],['Cobrado por el jefe (jornadas con porcentaje)',money(m.settlement.boss)]])appendSummaryLine(d,a,b);
     appendSummaryLine(d,settlementLabel(m.settlement),m.settlement.ready?money(Math.abs(m.settlement.balance)):'Sin calcular',true);
     const note=document.createElement('p');note.className='hint';note.textContent='Solo se liquidan jornadas con porcentaje configurado. No descuenta entregas ni anticipos ya realizados.';d.append(note);}
   const c=$('monthCollections');c.replaceChildren();const h=document.createElement('h3');h.textContent='Cobros de todas las jornadas del periodo';c.append(h);
-  appendSummaryLine(c,'Efectivo cobrado por el chófer',money(m.allCollections.cash));appendSummaryLine(c,'Cobrado por el jefe (bruto)',money(m.allCollections.boss));
+  appendSummaryLine(c,'💵 Efectivo cobrado por el chófer',money(m.allCollections.cash));appendSummaryLine(c,'📱 💳 Cobrado por el jefe (bruto)',money(m.allCollections.boss));
   if(m.allCollections.unclassified)appendSummaryLine(c,'Cobros antiguos sin clasificar',money(m.allCollections.unclassified));
   $('monthGrossLine').textContent=`Total bruto: ${money(m.gross)} · Comisiones: −${money(m.commission)} · Neto: ${money(m.gross-m.commission)}`;
   $('monthlyDays').replaceChildren();$('monthlyPlatforms').replaceChildren();
