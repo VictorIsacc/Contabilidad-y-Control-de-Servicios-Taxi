@@ -374,3 +374,5 @@ body.light .service-row .amount-gross{color:#526b85}body.light .service-row .amo
 .central-config{margin:20px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}.central-config .hint{margin-bottom:0}
 
 .insurance-stat{border-color:#9b7acb}.insurance-stat strong{color:#bba0ef}.insurance-stat small{font-size:11px;line-height:1.5;color:var(--muted)}body.light .insurance-stat strong{color:#6b3db5}
+
+[hidden]{display:none!important}.usage-config{margin-bottom:18px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}.usage-config select,.mode-filter select{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit}.usage-config .switch-row{margin-top:12px}.usage-badge{font-size:12px;color:var(--muted);text-align:center;margin:12px 0 6px}.mode-filter{display:block;margin-bottom:14px}

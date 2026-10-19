@@ -1,5 +1,5 @@
 const APP='contabilidad-control-servicios-taxi';
-const VERSION='1.10.0';
+const VERSION='1.11.0';
 const BASE=new URL('./',self.location.href);
 const PREFIX=APP+':'+encodeURIComponent(BASE.pathname)+':';
 const CACHE=PREFIX+VERSION;

@@ -99,10 +99,27 @@ function pdfCashStrip(report,value,label='Distribución de los cobros brutos'){
  report.content+=pdfText('COBRADO POR EL JEFE',214,top-51,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-66,11,true,c.blue,165);
  report.content+=pdfText('SIN CLASIFICAR',392,top-51,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-66,11,true,c.amber,165);report.y-=85;
 }
+function pdfMethodCountStrip(report,counts){
+ const c=PDF_COLORS;report.ensure(52);const top=report.y;
+ for(const [i,[key,label,icon]] of [['cash','Efectivo','efectivo'],['tpv','TPV','tpv'],['app','App','app'],['central','Abonados / central','abonado']].entries()){
+  const x=36+i*132;report.content+=pdfBox(x,top-42,127,42,c.white,7)+pdfPaymentIcon(icon,x+7,top-28,18)+pdfText(label,x+31,top-14,7.5,true,c.muted,89)+pdfText(counts[key]+(counts[key]===1?' servicio':' servicios'),x+31,top-30,10,true,c.ink,89);
+ }
+ report.y-=52;if(counts.unclassified)report.note('Servicios antiguos sin clasificar: '+counts.unclassified);
+}
+function pdfPaymentSummary(report,payments,counts,title='Cobros por modalidad'){
+ const c=PDF_COLORS;report.section(title);const labels=[['cash','Efectivo','efectivo',c.green,c.greenLight],['tpv','TPV','tpv',c.blue,c.blueLight],['app','App','app',c.purple,c.purpleLight],['central','Abonados / central','abonado',c.amber,c.amberLight]];
+ report.ensure(94);const top=report.y;labels.forEach(([key,label,icon,color,light],i)=>{const x=36+i*132;report.content+=pdfBox(x,top-80,127,80,light,9)+pdfPaymentIcon(icon,x+8,top-25,18)+pdfText(label,x+31,top-18,7.5,true,color,89)+pdfText(counts[key]+(counts[key]===1?' servicio':' servicios'),x+9,top-39,9,false,c.muted,109)+pdfText(pdfSafeMoney(payments[key]),x+9,top-64,15,true,color,109);});report.y-=96;
+ if(payments.unclassified)report.note('Servicios antiguos sin clasificar: '+counts.unclassified+' · '+pdfSafeMoney(payments.unclassified));
+}
+function pdfOwnerCollectionsPage(s){
+ const c=PDF_COLORS,d=new TaxiPDFReport('Resumen de cobros del titular',pdfSessionSubtitle(s),'TITULAR / USO PROPIO',!!s.reportExample);
+ d.cards([['Facturación bruta',pdfSafeMoney(totalCents(s)),c.blue,c.blueLight],['Comisiones',pdfSafeMoney(totalCommission(s)),c.amber,c.amberLight],['Total neto propio',pdfSafeMoney(accountingTotal(s)),c.green,c.greenLight]]);
+ pdfPaymentSummary(d,paymentBreakdown(s),paymentCounts(s));pdfPlatformChart(d,monthAccounting([s]).rows);d.note('Importes por modalidad en bruto. App, TPV y cobro en central se distinguen del efectivo. El total propio corresponde a la facturación después de las comisiones activadas.');return d.finish();
+}
 function pdfPlatformChart(report,rows){
  report.section('Actividad por plataforma');const max=Math.max(1,...rows.map(r=>r.total));
  for(const r of rows){report.ensure(32);const y=report.y;report.content+=pdfBox(36,y-28,523,28,PDF_COLORS.white,6)+pdfImage(r.id,43,y-25,22,22);
-  report.content+=pdfText(r.label,74,y-12,8.5,true,PDF_COLORS.ink,140)+pdfText(`${r.count} servicios`,74,y-25,7,false,PDF_COLORS.muted,140);
+  report.content+=pdfText(r.label,74,y-12,8.5,true,PDF_COLORS.ink,140)+pdfText(`${r.count} ${r.count===1?'servicio':'servicios'}`,74,y-25,7,false,PDF_COLORS.muted,140);
   report.content+=pdfBox(220,y-21,219,9,'#e7edf5',4)+pdfBox(220,y-21,219*r.total/max,9,PDF_PLATFORM_COLORS[r.id]||PDF_COLORS.blue,4);
   report.content+=pdfText(pdfSafeMoney(r.total),548,y-17,9,true,PDF_PLATFORM_COLORS[r.id]||PDF_COLORS.ink,99,'right');report.y-=32;
  }
@@ -121,7 +138,7 @@ function pdfDriverOverview(model){
  const rows=[['Facturación bruta',pdfSafeMoney(model.gross)],['Comisiones de plataformas','- '+pdfSafeMoney(model.commission)],['Base para reparto',pdfSafeMoney(model.base)],['Participación del chófer'+(model.percent?' ('+model.percent+')':''),value.configured?pdfSafeMoney(model.share):'Sin configurar'],[model.period?'Seguro total del periodo':'Seguro diario'+(model.insuranceApplied===false?' (no aplicado)':''),value.configured?'- '+pdfSafeMoney(model.insurance):'Sin configurar']];
  for(let i=0;i<rows.length;i++){const y=d.y-27;d.content+=pdfBox(36,y,523,27,i%2?'#eaf0f8':c.white,4)+pdfText(rows[i][0],48,y+9,9,false,c.ink,340)+pdfText(rows[i][1],547,y+9,10,true,c.ink,150,'right');d.y-=29;}
  d.y-=15;pdfCashStrip(d,value,model.period?'Cobros de las jornadas con porcentaje':'Quién ha cobrado los servicios');
- d.note('Saldo = ganancia del chófer menos efectivo cobrado. App y TPV los cobra el jefe. Abonado, Imbric y Join Up suman efectivo del chófer solo si se activa al iniciar su jornada; en las demás jornadas se cobran en central. No descuenta entregas ni anticipos ya realizados.');
+ d.note('Saldo = ganancia del chófer menos efectivo cobrado. App y TPV los cobra el jefe. Abonado, Imbric y Join Up se cobran en central. Los registros anteriores conservan su modalidad guardada. No descuenta entregas ni anticipos ya realizados.');
  if(model.period)d.note('Solo se liquidan jornadas con porcentaje configurado. El seguro solo se descuenta en las jornadas donde estaba activado. Las jornadas antiguas sin modalidad de cobro pueden dejar el saldo pendiente.');
  return d.finish();
 }
@@ -134,32 +151,35 @@ function pdfCollectionsPage(s){
  return d.finish();
 }
 function exportPDF(customFilename){
- if(!listSession)return;const s=listSession,type=$('pdfType').value;
+ if(!listSession)return;const s=listSession,type=isOwner(s)?'taxi':$('pdfType').value;
  if(type==='driver'){
   if(!driverOn(s)){notify('Esta jornada no tiene ganancias del conductor configuradas');return;}
   createPDFPages([pdfDriverPage(s)],customFilename||fileStem(s)+'-conductor.pdf');return;
  }
- const c=PDF_COLORS,d=new TaxiPDFReport('Facturación de la jornada',pdfSessionSubtitle(s),'DETALLE DE SERVICIOS',!!s.reportExample);
+ const c=PDF_COLORS,d=new TaxiPDFReport(isOwner(s)?'Facturación del titular':'Facturación de la jornada',pdfSessionSubtitle(s),isOwner(s)?'TITULAR / USO PROPIO':'DETALLE DE SERVICIOS',!!s.reportExample);
  d.cards([['Facturación bruta',pdfSafeMoney(totalCents(s)),c.blue,c.blueLight,'Importe de todos los servicios'],['Comisiones',pdfSafeMoney(totalCommission(s)),c.amber,c.amberLight,commissionsOn(s)?'Imbric 12 % - Join Up 10 %':'Descuentos desactivados'],['Total contabilizado',pdfSafeMoney(accountingTotal(s)),c.green,c.greenLight,commissionsOn(s)?'Neto después de comisiones':'Sin descuentos de comisión']]);
+ pdfMethodCountStrip(d,paymentCounts(s));
  const columns=[{label:'Fecha y hora',width:103},{label:'Plataforma / cobro',width:180},{label:'Bruto',width:80,right:true},{label:'Comisión',width:78,right:true,color:c.amber},{label:'Neto',width:82,right:true,bold:true,color:c.green}];
  d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentIcon:effectiveMethod(item,s)||(CENTRAL_TYPES.includes(item.type)?'abonado':null),paymentMethod:effectiveMethod(item,s)||null,methodFallback:CENTRAL_TYPES.includes(item.type)?'Cobro en central':collectionOwner(item,s)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item,s),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
- const pages=d.finish();pages.push(...pdfCollectionsPage(s));if(type==='both')pages.push(pdfDriverPage(s));createPDFPages(pages,customFilename||fileStem(s)+'.pdf');
+ const pages=d.finish();pages.push(...(isOwner(s)?pdfOwnerCollectionsPage(s):pdfCollectionsPage(s)));if(type==='both')pages.push(pdfDriverPage(s));createPDFPages(pages,customFilename||fileStem(s)+'.pdf');
 }
 function pdfPeriodOverview(m){
- const c=PDF_COLORS,d=new TaxiPDFReport('Resumen del periodo',m.periodLabel+'  |  '+m.sessions.length+' jornadas - '+m.count+' servicios','FACTURACIÓN DEL TAXI',!!m.reportExample);
- d.cards([['Facturación bruta',pdfSafeMoney(m.gross),c.blue,c.blueLight,'Todas las jornadas seleccionadas'],['Comisiones',pdfSafeMoney(m.commission),c.amber,c.amberLight,'Descuentos de las plataformas'],['Total contabilizado',pdfSafeMoney(m.total),c.green,c.greenLight,'Según la configuración de cada día'],['Seguro descontado',pdfSafeMoney(m.insurance),c.purple,c.purpleLight,`${m.insuranceDays} ${m.insuranceDays===1?'jornada':'jornadas'} con seguro`]]);
- d.payout(m.settlement,`${m.driverSessions.length} jornadas con porcentaje`);
- pdfCashStrip(d,m.allCollections,'Cobros de todas las jornadas del periodo');pdfPlatformChart(d,m.rows);
- d.note(`Media por servicio: ${pdfSafeMoney(m.averageService)}. Media por jornada: ${pdfSafeMoney(m.averageSession)}. La liquidación usa solo la ganancia y el efectivo de las jornadas con porcentaje; no descuenta entregas ni anticipos.`);
+ const c=PDF_COLORS,d=new TaxiPDFReport(m.ownerOnly?'Resumen del titular':'Resumen del periodo',m.periodLabel+'  |  '+m.sessions.length+(m.sessions.length===1?' jornada - ':' jornadas - ')+m.count+' servicios',m.ownerOnly?'TITULAR / USO PROPIO':'FACTURACIÓN DEL TAXI',!!m.reportExample);
+ const cards=[['Facturación bruta',pdfSafeMoney(m.gross),c.blue,c.blueLight,'Todas las jornadas seleccionadas'],['Comisiones',pdfSafeMoney(m.commission),c.amber,c.amberLight,'Descuentos de las plataformas'],[m.ownerOnly?'Total neto propio':'Total contabilizado',pdfSafeMoney(m.total),c.green,c.greenLight,'Según la configuración de cada día']];
+ if(!m.ownerOnly)cards.push(['Seguro descontado',pdfSafeMoney(m.insurance),c.purple,c.purpleLight,`${m.insuranceDays} ${m.insuranceDays===1?'jornada':'jornadas'} con seguro`]);d.cards(cards);
+ if(m.driverSessions.length)d.payout(m.settlement,`${m.driverSessions.length} jornadas con porcentaje`);
+ pdfPaymentSummary(d,m.payments,m.paymentCounts);pdfPlatformChart(d,m.rows);
+ d.note(`Media por servicio: ${pdfSafeMoney(m.averageService)}. Media por jornada: ${pdfSafeMoney(m.averageSession)}.`+(m.ownerSessions.length?` Total propio de ${m.ownerSessions.length} ${m.ownerSessions.length===1?'jornada':'jornadas'} de titular: ${pdfSafeMoney(m.ownerTotal)}.`:'')+(m.driverSessions.length?' La liquidación corresponde solo a las jornadas con porcentaje. No descuenta entregas ni anticipos.':''));
  return d.finish();
 }
 function monthlyPdf(customFilename){
- const m=monthSnapshot;if(!m||!m.sessions.length){notify('No hay jornadas para exportar');return;}const type=$('monthPdfType').value,c=PDF_COLORS,pages=[];
+ const m=monthSnapshot;if(!m||!m.sessions.length){notify('No hay jornadas para exportar');return;}const type=m.ownerOnly?'taxi':$('monthPdfType').value,c=PDF_COLORS,pages=[];
  if(type==='driver'&&!m.driverSessions.length){notify('No hay jornadas con ganancias configuradas en este periodo');return;}
  if(type!=='driver'){
   pages.push(...pdfPeriodOverview(m));
   const d=new TaxiPDFReport('Detalle de la facturación',m.periodLabel,'JORNADAS Y PLATAFORMAS',!!m.reportExample);
   d.table('Por jornada',[{label:'Inicio',width:115},{label:'Serv.',width:36,right:true},{label:'Bruto',width:93,right:true},{label:'Comisión',width:93,right:true},{label:'Contabilizado',width:93,right:true,bold:true,color:c.green},{label:'Media',width:93,right:true}],m.sessions.map(s=>({cells:[dateText(s.startedAt)+(s.closedAt?'':' *'),s.services.length,pdfSafeMoney(totalCents(s)),pdfSafeMoney(totalCommission(s)),pdfSafeMoney(accountingTotal(s)),pdfSafeMoney(s.services.length?Math.round(accountingTotal(s)/s.services.length):0)]})));
+  d.table('Servicios por modalidad en cada jornada',[{label:'Inicio',width:115},{label:'Total',width:48,right:true},{label:'Efectivo',width:90,right:true},{label:'TPV',width:90,right:true},{label:'App',width:90,right:true},{label:'Abonados / central',width:90,right:true}],m.sessions.map(s=>{const counts=paymentCounts(s);return {cells:[dateText(s.startedAt),s.services.length,counts.cash,counts.tpv,counts.app,counts.central]};}));
   d.table('Por plataforma',[{label:'Plataforma',width:115},{label:'Serv.',width:36,right:true},{label:'Bruto',width:93,right:true},{label:'Comisión',width:93,right:true},{label:'Contabilizado',width:93,right:true,bold:true,color:c.green},{label:'Media',width:93,right:true}],m.rows.map(r=>({type:r.id,logo:r.id,logoColumn:0,cells:[r.label,r.count,pdfSafeMoney(r.gross),pdfSafeMoney(r.commission),pdfSafeMoney(r.total),pdfSafeMoney(Math.round(r.total/r.count))]})));
   d.note('Cada jornada se atribuye a su fecha local de inicio, aunque cierre después de medianoche. Se incluyen las fechas Desde y Hasta. Las jornadas marcadas con * siguen abiertas. Neto si había comisiones activadas; bruto en las restantes.');pages.push(...d.finish());
  }

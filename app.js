@@ -21,27 +21,48 @@ const accountingTotal = session => commissionsOn(session) ? totalNet(session) : 
 const accountingValue = (svc,session) => commissionsOn(session) ? netCents(svc,session) : svc.amountCents;
 
 // Configuración por jornada. En historiales antiguos no se presuponen ganancias.
-const driverOn = session => session?.driverEnabled === true && Number.isInteger(session.driverBasisPoints) && Number.isInteger(session.dailyInsuranceCents);
+const USAGE_MODE_KEY='taxi-usage-mode-v1';
+const isOwner=session=>session?.usageMode==='owner';
+const modeLabel=session=>isOwner(session)?'Titular / uso propio':'Chófer';
+function preferredUsageMode(){try{return localStorage.getItem(USAGE_MODE_KEY)==='owner'?'owner':'driver';}catch(e){return 'driver';}}
+function currentUsageMode(){return active?(isOwner(active)?'owner':'driver'):preferredUsageMode();}
+const driverOn = session => !isOwner(session) && session?.driverEnabled === true && Number.isInteger(session.driverBasisPoints) && Number.isInteger(session.dailyInsuranceCents);
 const driverShare = session => driverOn(session) ? Math.round(accountingTotal(session) * session.driverBasisPoints / 10000) : 0;
 const driverInsurance = session => driverOn(session) && session.insuranceEnabled!==false ? session.dailyInsuranceCents : 0;
 const driverEarnings = session => driverShare(session) - driverInsurance(session);
 const percentLabel = session => (session.driverBasisPoints / 100).toLocaleString('es-ES',{maximumFractionDigits:2}) + ' %';
 // Cobros brutos: el efectivo físico no se reduce por las comisiones de plataforma.
 const CENTRAL_TYPES=['abonado','imbric','joinup'];
-const centralCash=session=>session?.centralCashByDriver===true;
+const centralCash=session=>!isOwner(session)&&session?.centralCashByDriver===true;
 const effectiveMethod=(svc,session)=>CENTRAL_TYPES.includes(svc.type)?(centralCash(session)?'efectivo':null):svc.paymentMethod;
 function centralServiceLabel(type,session){return (centralCash(session)?'💵 ':'🧾 ')+nameType(type)+(centralCash(session)?' · efectivo del chófer':' · cobro en central');}
 function collectionOwner(svc,session){
+  if(isOwner(session)){if(CENTRAL_TYPES.includes(svc.type))return 'central';return ['efectivo','app','tpv'].includes(svc.paymentMethod)?'titular':'sin-clasificar';}
   if(CENTRAL_TYPES.includes(svc.type))return centralCash(session)?'conductor':'jefe';
   if(svc.paymentMethod==='efectivo')return 'conductor';
   if(['app','tpv'].includes(svc.paymentMethod))return 'jefe';
   return 'sin-clasificar';
 }
-function collections(session){
-  const result={cash:0,boss:0,unclassified:0};
-  for(const svc of session.services){const owner=collectionOwner(svc,session);result[owner==='conductor'?'cash':owner==='jefe'?'boss':'unclassified']+=svc.amountCents;}
-  return result;
+function paymentBucket(svc,session){const method=effectiveMethod(svc,session);return method==='efectivo'?'cash':['app','tpv'].includes(method)?method:CENTRAL_TYPES.includes(svc.type)?'central':'unclassified';}
+function paymentCounts(session){const result={cash:0,app:0,tpv:0,central:0,unclassified:0};for(const svc of session.services)result[paymentBucket(svc,session)]++;return result;}
+function sumPaymentCounts(sessions){return sessions.reduce((all,s)=>{const counts=paymentCounts(s);for(const k of Object.keys(all))all[k]+=counts[k];return all;},{cash:0,app:0,tpv:0,central:0,unclassified:0});}
+function countsText(session){const c=paymentCounts(session);return `💵 ${c.cash} · 💳 ${c.tpv} · 📱 ${c.app} · 🧾 ${c.central}`+(c.unclassified?' · Sin clasificar '+c.unclassified:'');}
+function paymentBreakdown(session){
+ const result={cash:0,app:0,tpv:0,central:0,unclassified:0};
+ for(const svc of session.services){const key=paymentBucket(svc,session);result[key]+=svc.amountCents;}
+ return result;
 }
+function sumPayments(sessions){return sessions.reduce((all,s)=>{const p=paymentBreakdown(s);for(const key of Object.keys(all))all[key]+=p[key];return all;},{cash:0,app:0,tpv:0,central:0,unclassified:0});}
+function collections(session){const p=paymentBreakdown(session);return {cash:p.cash,boss:p.app+p.tpv+p.central,unclassified:p.unclassified};}
+function renderPaymentBreakdown(element,value,title='Cobros por modalidad'){
+ element.replaceChildren();const h=document.createElement('h3');h.textContent=title;element.append(h);
+ for(const [label,key] of [['💵 Efectivo','cash'],['📱 App','app'],['💳 TPV','tpv'],['🧾 Cobro en central','central']])appendSummaryLine(element,label,money(value[key]));
+ if(value.unclassified)appendSummaryLine(element,'Cobros antiguos sin clasificar',money(value.unclassified));
+ const note=document.createElement('p');note.className='hint';note.textContent='Importes brutos por modalidad. App, TPV y central no forman parte del efectivo.';element.append(note);
+}
+function configureReportType(select,owner){for(const option of select.options){option.hidden=option.disabled=owner&&option.value!=='taxi';if(option.value==='taxi')option.textContent=owner?'Informe del titular':'Facturación del taxi';}if(owner)select.value='taxi';}
+function updateUsageFields(){const owner=$('usageMode').value==='owner';$('driverStartFields').hidden=owner;$('ownerStartHint').hidden=!owner;}
+function updateRoleGuides(){const owner=currentUsageMode()==='owner';document.querySelector('.instruction-hero-card p').textContent=owner?'Registra la facturación completa del titular, las comisiones de las plataformas y los servicios por efectivo, App, TPV y cobro en central. Consulta resúmenes y exporta PDF y JSON.':'Registra tus servicios, comisiones y ganancias del conductor. Consulta jornadas y genera informes PDF y JSON.';$('ownerInstructions').hidden=!owner;$('driverInstructions').hidden=owner;$('driverSettlementGuide').hidden=owner;}
 function settlement(session){
   const c=collections(session),configured=driverOn(session),ready=configured&&c.unclassified===0;
   const balance=ready?driverEarnings(session)-c.cash:null;
@@ -59,13 +80,14 @@ function appendSummaryLine(element,label,value,final=false){
   const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=value;row.append(a,b);element.append(row);
 }
 function renderCollections(element,session){
+  if(isOwner(session)){renderPaymentBreakdown(element,paymentBreakdown(session),'Cobros del titular por modalidad');return;}
   const c=collections(session);element.replaceChildren();const h=document.createElement('h3');h.textContent='Quién ha cobrado los servicios';element.append(h);
   appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(c.cash));
   appendSummaryLine(element,'📱 💳 🧾 Cobrado por el jefe o en central',money(c.boss));
   if(c.unclassified)appendSummaryLine(element,'Cobros antiguos sin clasificar',money(c.unclassified));
   const note=document.createElement('p');note.className='hint';note.textContent=centralCash(session)?'Abonado, Imbric y Join Up: efectivo cobrado por el chófer en esta jornada. Cobros mostrados en bruto.':'Abonado, Imbric y Join Up: cobro en central. Cobros mostrados en bruto.';element.append(note);
 }
-function moneyOrDash(session){return driverOn(session)?money(driverEarnings(session)):'Sin configurar';}
+function moneyOrDash(session){return isOwner(session)?'—':driverOn(session)?money(driverEarnings(session)):'Sin configurar';}
 function parseNonnegativeCents(input){const val=String(input).trim().replace(/\s/g,'').replace(/€/g,'').replace(',','.');if(!/^\d+(?:\.\d{1,2})?$/.test(val))return null;const [a,b='']=val.split('.');const n=Number(a)*100+Number((b+'00').slice(0,2));return Number.isSafeInteger(n)&&n>=0&&n<=999999999?n:null;}
 function parsePercentBasisPoints(input){const val=String(input).trim().replace(',','.');if(!/^\d{1,3}(?:\.\d{1,2})?$/.test(val))return null;const n=Math.round(Number(val)*100);return n>=0&&n<=10000?n:null;}
 
@@ -109,7 +131,7 @@ function markError(e){console.error(e);notify('No se pudo guardar. Revisa el alm
 function showModal(id){lastFocus=document.activeElement;$(id).hidden=false;document.body.style.overflow='hidden';$(id).querySelector('button:not(:disabled),input')?.focus();}
 function hideModal(id){$(id).hidden=true;if(['startDialog','entryDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';lastFocus?.focus();}
 function render(){
-  const on=!!active;
+  const on=!!active;$('usageModeBadge').textContent=active?modeLabel(active):(preferredUsageMode()==='owner'?'Titular / uso propio':'Chófer');updateRoleGuides();
   $('status').classList.toggle('active',on);
   $('status').innerHTML='<span class="status-dot"></span>'+(on?'Jornada en curso':'Sin jornada activa');
   $('total').textContent=money(on?accountingTotal(active):0);
@@ -168,8 +190,8 @@ async function startSession(){
   if(active)return;
   const sessions=await readAll();const existing=sessions.find(s=>!s.closedAt);
   if(existing){active=existing;render();notify('Se ha recuperado la jornada abierta');return;}
-  $('centralCashToggle').checked=false;$('insuranceToggle').checked=true;$('driverInsurance').disabled=false;
-  loadDriverDefaults();
+  $('insuranceToggle').checked=true;$('driverInsurance').disabled=false;
+  loadDriverDefaults();$('usageMode').value=preferredUsageMode();$('rememberUsageMode').checked=true;updateUsageFields();
   showModal('startDialog');
 }
 async function confirmStartSession(e){
@@ -177,14 +199,15 @@ async function confirmStartSession(e){
  try{
    const existing=(await readAll()).find(s=>!s.closedAt);
    if(existing){active=existing;hideModal('startDialog');render();notify('Se ha recuperado la jornada abierta');return;}
-   const useDriver=$('driverToggle').checked;
+   const usageMode=$('usageMode').value;if(!['driver','owner'].includes(usageMode))throw Error('Modo no válido');
+   const owner=usageMode==='owner',useDriver=!owner&&$('driverToggle').checked;
    const pct=useDriver?parsePercentBasisPoints($('driverPercent').value):0;
-   const insuranceEnabled=$('insuranceToggle').checked;
+   const insuranceEnabled=!owner&&$('insuranceToggle').checked;
    const insurance=useDriver?(parseNonnegativeCents($('driverInsurance').value)??(insuranceEnabled?null:0)):0;
    if(useDriver&&(pct===null||insurance===null)){notify('Introduce un porcentaje entre 0 y 100 y un seguro diario válido');return;}
    const now=new Date().toISOString();
-   const s={schemaVersion:4,insuranceEnabled,centralCashByDriver:$('centralCashToggle').checked,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
-   await writeOne(s);const defaultsSaved=storeDriverDefaults(s);active=s;hideModal('startDialog');render();notify(defaultsSaved?'Jornada iniciada. Ya puedes añadir servicios.':'Jornada iniciada, pero no se pudieron fijar los valores para nuevas jornadas.');
+   const s={schemaVersion:5,usageMode,insuranceEnabled,centralCashByDriver:false,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
+   await writeOne(s);let modeSaved=true;try{if($('rememberUsageMode').checked)localStorage.setItem(USAGE_MODE_KEY,usageMode);}catch(e){modeSaved=false;}const defaultsSaved=storeDriverDefaults(s)&&modeSaved;active=s;hideModal('startDialog');render();notify(defaultsSaved?'Jornada iniciada. Ya puedes añadir servicios.':'Jornada iniciada, pero no se pudieron fijar los valores para nuevas jornadas.');
  }catch(e){markError(e);}
 
 }
@@ -209,7 +232,8 @@ function showList(session){
  listSession=session;
  $('listEyebrow').textContent=session.closedAt?'JORNADA CERRADA':'PARCIAL DE JORNADA';
  $('listTitle').textContent=session.closedAt?'Resumen del cierre':'Servicios registrados';
- $('listMeta').textContent=`Inicio: ${dateText(session.startedAt)} · ${session.closedAt?'Cierre: '+dateText(session.closedAt):'En curso'} · ${session.services.length} servicios`;
+ configureReportType($('pdfType'),isOwner(session));
+ $('listMeta').textContent=`${modeLabel(session)} · Inicio: ${dateText(session.startedAt)} · ${session.closedAt?'Cierre: '+dateText(session.closedAt):'En curso'} · ${session.services.length} servicios`;
  $('listTotal').textContent=money(accountingTotal(session));
   $('listBasis').textContent=commissionsOn(session)?'Total NETO de la jornada':'Total de la jornada';
  renderCollections($('cashSessionSummary'),session);
@@ -221,12 +245,9 @@ function showList(session){
    $('listCommission').textContent='−'+money(totalCommission(session));
    $('listNet').textContent=money(totalCents(session));
  }
- const byMethod=$('methodTotals');byMethod.replaceChildren();
- for(const method of ['app','efectivo','tpv']){
-   const items=session.services.filter(x=>effectiveMethod(x,session)===method);
-   if(!items.length)continue;
-   const b=document.createElement('div');b.className='method-total';
-   b.textContent=METHOD_UI[method]+' · '+money(items.reduce((n,x)=>n+x.amountCents,0));b.title='Cobros en bruto';byMethod.append(b);
+ const byMethod=$('methodTotals');byMethod.replaceChildren();const amounts=paymentBreakdown(session),counts=paymentCounts(session);
+ for(const [key,label] of [['cash','💵 Efectivo'],['tpv','💳 TPV'],['app','📱 App'],['central','🧾 Abonados / central'],['unclassified','Sin clasificar']]){
+  if(key==='unclassified'&&!counts[key])continue;const item=document.createElement('div');item.className='method-total';item.textContent=label+' · '+counts[key]+(counts[key]===1?' servicio':' servicios')+' · '+money(amounts[key]);byMethod.append(item);
  }
  const div=$('serviceList');div.replaceChildren();
  if(!session.services.length){div.innerHTML='<div class="empty">Todavía no hay servicios registrados.</div>';}else{
@@ -277,13 +298,13 @@ async function deleteSession(sessionId,origin){
  }catch(e){markError(e);}
 }
 async function showHistory(){try{
- const all=(await readAll()).filter(s=>s.closedAt).sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
+ const filter=$('historyModeFilter').value;const all=(await readAll()).filter(s=>s.closedAt&&(filter==='all'||(isOwner(s)?'owner':'driver')===filter)).sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
  const container=$('historyList');container.replaceChildren();
  if(!all.length)container.innerHTML='<div class="empty">No hay jornadas cerradas todavía.</div>';
  for(const s of all){
   const row=document.createElement('div');row.className='history-item';
   const info=document.createElement('div');
-  const top=document.createElement('div');top.className='hint';top.textContent=dateText(s.startedAt);
+  const top=document.createElement('div');top.className='hint';top.textContent=dateText(s.startedAt)+' · '+modeLabel(s);
   const sum=document.createElement('strong');sum.textContent=money(accountingTotal(s));
   const foot=document.createElement('p');foot.className='hint';foot.textContent=`${s.services.length} servicios · ${commissionsOn(s)?'Total neto':'Total bruto'} · Cierre ${dateText(s.closedAt)}`;
   if(driverOn(s))foot.textContent+=` · Ganancia chófer ${money(driverEarnings(s))} · ${settlementText(settlement(s))}`;
@@ -311,7 +332,11 @@ function download(blob,filename){
   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 function fileStem(s){const d=new Date(s.startedAt);const part=n=>String(n).padStart(2,'0');return `contabilidad-control-servicios-taxi-${d.getFullYear()}-${part(d.getMonth()+1)}-${part(d.getDate())}-${part(d.getHours())}${part(d.getMinutes())}`;}
-function exportJSON(){if(!listSession)return;const s=listSession;const json={app:'Contabilidad y Control de Servicios Taxi',version:8,insuranceEnabled:s.insuranceEnabled!==false,centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:commissionsOn(s)?'neto':'bruto',conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null},totalBrutoEuros:(totalCents(s)/100).toFixed(2),totalComisionEuros:(totalCommission(s)/100).toFixed(2),totalNetoEuros:(totalNet(s)/100).toFixed(2),totalContabilizadoEuros:(accountingTotal(s)/100).toFixed(2),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionsOn(s)?(COMMISSION_RATES[x.type]||0):0,comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),importeBrutoEuros:(x.amountCents/100).toFixed(2),comisionEuros:(commissionCents(x,s)/100).toFixed(2),importeNetoEuros:(netCents(x,s)/100).toFixed(2),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};download(new Blob([JSON.stringify(json,null,2)],{type:'application/json;charset=utf-8'}),fileStem(s)+'.json');notify('JSON preparado para descargar');}
+function exportJSON(){
+ if(!listSession)return;const s=listSession;
+ const json={app:'Contabilidad y Control de Servicios Taxi',version:9,usageMode:isOwner(s)?'owner':'driver',id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:commissionsOn(s)?'neto':'bruto',cobros:paymentBreakdown(s),serviciosPorModalidad:paymentCounts(s),...(isOwner(s)?{resultadoTitularCentimos:accountingTotal(s)}:{insuranceEnabled:s.insuranceEnabled!==false,centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null}}),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionsOn(s)?(COMMISSION_RATES[x.type]||0):0,comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};
+ download(new Blob([JSON.stringify(json,null,2)],{type:'application/json;charset=utf-8'}),fileStem(s)+'.json');notify('JSON preparado para descargar');
+}
 // Los informes PDF se generan localmente en pdf-report.js.
 
 // Resumen mensual: agrupar exclusivamente por la fecha LOCAL de inicio de cada jornada.
@@ -323,7 +348,8 @@ function monthAccounting(sessions){
   for(const s of sessions)for(const svc of s.services){const r=rows.find(x=>x.id===svc.type);if(!r)continue;r.count++;r.gross+=svc.amountCents;r.commission+=commissionCents(svc,s);r.total+=accountingValue(svc,s);}
   const gross=sumBy(sessions,totalCents),commission=sumBy(sessions,totalCommission),total=sumBy(sessions,accountingTotal),count=sumBy(sessions,s=>s.services.length);
   const driverSessions=sessions.filter(driverOn),driverParticipation=sumBy(driverSessions,driverShare),insurance=sumBy(driverSessions,driverInsurance),driverTotal=sumBy(driverSessions,driverEarnings),insuranceDays=driverSessions.filter(s=>driverInsurance(s)>0).length;
-  return {sessions,rows:rows.filter(r=>r.count),gross,commission,total,count,driverSessions,driverParticipation,insurance,insuranceDays,driverTotal,averageService:count?Math.round(total/count):0,averageSession:sessions.length?Math.round(total/sessions.length):0};
+  const ownerSessions=sessions.filter(isOwner),ownerTotal=sumBy(ownerSessions,accountingTotal),ownerOnly=sessions.length>0&&ownerSessions.length===sessions.length;
+  return {ownerSessions,ownerTotal,ownerOnly,paymentCounts:sumPaymentCounts(sessions),payments:sumPayments(sessions),sessions,rows:rows.filter(r=>r.count),gross,commission,total,count,driverSessions,driverParticipation,insurance,insuranceDays,driverTotal,averageService:count?Math.round(total/count):0,averageSession:sessions.length?Math.round(total/sessions.length):0};
 }
 function periodSettlement(sessions){
   const configuredSessions=sessions.filter(driverOn),values=configuredSessions.map(settlement);
@@ -340,7 +366,7 @@ function resetMonthDates(){
 }
 function exportPeriodJSON(){
  const m=monthSnapshot;if(!m||!m.sessions.length)return;
- const payload={app:'Contabilidad y Control de Servicios Taxi',version:8,seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:{efectivoConductorCentimos:m.allCollections.cash,cobradoJefeBrutoCentimos:m.allCollections.boss,sinClasificarCentimos:m.allCollections.unclassified},liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length,jornadasTotales:m.sessions.length},jornadas:m.sessions.map(s=>({...s,liquidacion:settlementJSON(settlement(s))}))};
+ const payload={app:'Contabilidad y Control de Servicios Taxi',version:9,filtroModo:$('monthModeFilter').value,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:m.payments,serviciosPorModalidad:m.paymentCounts,...(m.ownerSessions.length?{jornadasTitular:m.ownerSessions.length,resultadoTitularCentimos:m.ownerTotal}:{}),...(m.driverSessions.length?{seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length}}:{}),jornadas:m.sessions.map(s=>isOwner(s)?{...s,serviciosPorModalidad:paymentCounts(s),resultadoTitularCentimos:accountingTotal(s)}:{...s,serviciosPorModalidad:paymentCounts(s),liquidacion:settlementJSON(settlement(s))})};
  download(new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'}),`contabilidad-taxi-periodo-${m.from}_${m.to}.json`);notify('JSON del periodo preparado para descargar');
 }
 function td(text){const cell=document.createElement('td');cell.textContent=text;return cell;}
@@ -351,7 +377,7 @@ async function refreshMonth(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to){
     monthSnapshot=null;$('periodCaption').textContent='';$('monthPdfBtn').disabled=true;$('monthJsonBtn').disabled=true;$('monthlyContent').hidden=true;$('monthlyEmpty').hidden=false;$('monthlyEmpty').textContent='Elige fechas válidas: Desde no puede ser posterior a Hasta.';return;
   }
-  const sessions=(await readAll()).filter(s=>{const day=localDay(s.startedAt);return day>=from&&day<=to;}).sort((a,b)=>a.startedAt.localeCompare(b.startedAt));
+  const sessions=(await readAll()).filter(s=>{const day=localDay(s.startedAt),filter=$('monthModeFilter').value;return day>=from&&day<=to&&(filter==='all'||(isOwner(s)?'owner':'driver')===filter);}).sort((a,b)=>a.startedAt.localeCompare(b.startedAt));
   const allCollections=sessions.reduce((all,s)=>{const c=collections(s);for(const k of Object.keys(all))all[k]+=c[k];return all;},{cash:0,boss:0,unclassified:0});
   monthSnapshot={key,from,to,periodLabel:`${displayDay(from)} - ${displayDay(to)}`,...monthAccounting(sessions),allCollections,settlement:periodSettlement(sessions)};
   $('periodCaption').textContent='Periodo: '+monthSnapshot.periodLabel;
@@ -359,7 +385,8 @@ async function refreshMonth(){
   $('monthlyEmpty').textContent='No hay jornadas registradas en este periodo.';
   $('monthlyEmpty').hidden=!!sessions.length;$('monthlyContent').hidden=!sessions.length;$('monthPdfBtn').disabled=!sessions.length;
   if(!sessions.length)return;
-  const m=monthSnapshot;
+  const m=monthSnapshot;configureReportType($('monthPdfType'),m.ownerOnly);$('monthlyTitle').textContent=m.ownerOnly?'Resumen del titular por fechas':'Mes y resumen por fechas';$('monthInsurance').closest('.month-stat').hidden=m.ownerOnly;$('monthDriverHeader').hidden=m.ownerOnly;
+  $('monthOwner').hidden=!m.ownerSessions.length;if(m.ownerSessions.length){const owner=$('monthOwner');owner.replaceChildren();const title=document.createElement('h3');title.textContent='Facturación propia · Titular';owner.append(title);appendSummaryLine(owner,'Total propio, sin reparto',money(m.ownerTotal),true);const note=document.createElement('p');note.className='hint';note.textContent=m.ownerSessions.length+(m.ownerSessions.length===1?' jornada':' jornadas')+' de titular. Total después de las comisiones activadas.';owner.append(note);}
   $('monthTotal').textContent=money(m.total);$('monthServices').textContent=String(m.count);
   $('monthMeanService').textContent=money(m.averageService);$('monthSessions').textContent=String(sessions.length);
   $('monthInsurance').textContent=money(m.insurance);$('monthInsuranceDays').textContent=m.insuranceDays+(m.insuranceDays===1?' jornada':' jornadas')+' con seguro descontado';
@@ -369,14 +396,12 @@ async function refreshMonth(){
     for(const [a,b] of [['Jornadas con porcentaje configurado',String(m.driverSessions.length)+' / '+String(m.sessions.length)],['Participación acumulada',money(m.driverParticipation)],['Seguro total descontado','−'+money(m.insurance)],['Jornadas con seguro descontado',String(m.insuranceDays)],['GANANCIA DEL PERIODO',money(m.driverTotal)],['💵 Efectivo (jornadas con porcentaje)',money(m.settlement.cash)],['Cobrado por el jefe (jornadas con porcentaje)',money(m.settlement.boss)]])appendSummaryLine(d,a,b);
     appendSummaryLine(d,settlementLabel(m.settlement),m.settlement.ready?money(Math.abs(m.settlement.balance)):'Sin calcular',true);
     const note=document.createElement('p');note.className='hint';note.textContent='Solo se liquidan jornadas con porcentaje configurado. No descuenta entregas ni anticipos ya realizados.';d.append(note);}
-  const c=$('monthCollections');c.replaceChildren();const h=document.createElement('h3');h.textContent='Cobros de todas las jornadas del periodo';c.append(h);
-  appendSummaryLine(c,'💵 Efectivo cobrado por el chófer',money(m.allCollections.cash));appendSummaryLine(c,'📱 💳 🧾 Cobrado por el jefe (bruto)',money(m.allCollections.boss));
-  if(m.allCollections.unclassified)appendSummaryLine(c,'Cobros antiguos sin clasificar',money(m.allCollections.unclassified));
+  renderPaymentBreakdown($('monthCollections'),m.payments,'Cobros de las jornadas seleccionadas');
   $('monthGrossLine').textContent=`Total bruto: ${money(m.gross)} · Comisiones: −${money(m.commission)} · Neto: ${money(m.gross-m.commission)}`;
   $('monthlyDays').replaceChildren();$('monthlyPlatforms').replaceChildren();
   for(const s of sessions){
     const tr=document.createElement('tr');
-    [dateText(s.startedAt)+(s.closedAt?'':' · abierta'),String(s.services.length),money(accountingTotal(s)),moneyOrDash(s)].forEach(t=>tr.append(td(t)));
+    [dateText(s.startedAt)+' · '+modeLabel(s)+(s.closedAt?'':' · abierta'),s.services.length+' servicios · '+countsText(s),money(accountingTotal(s)),moneyOrDash(s)].forEach((t,i)=>{const cell=td(t);if(i===3)cell.hidden=m.ownerOnly;tr.append(cell);});
     const actionCell=document.createElement('td');actionCell.className='monthly-actions';
     if(s.closedAt){
       const remove=document.createElement('button');remove.type='button';remove.className='danger-action';remove.textContent='Eliminar';remove.setAttribute('aria-label','Eliminar jornada del '+dateText(s.startedAt));remove.addEventListener('click',()=>deleteSession(s.id,'monthly'));actionCell.append(remove);
@@ -385,7 +410,7 @@ async function refreshMonth(){
   }
   for(const r of m.rows){const tr=document.createElement('tr');[r.label,String(r.count),money(r.total),money(Math.round(r.total/r.count))].forEach(t=>tr.append(td(t)));$('monthlyPlatforms').append(tr);}
 }
-async function showMonthly(){try{$('monthPicker').value=thisMonth();resetMonthDates();await refreshMonth();showModal('monthlyDialog');}catch(e){markError(e);}}
+async function showMonthly(){try{$('monthModeFilter').value=currentUsageMode();$('monthPicker').value=thisMonth();resetMonthDates();await refreshMonth();showModal('monthlyDialog');}catch(e){markError(e);}}
 // El nombre se confirma antes de la descarga, sin modificar la jornada ni sus datos.
 let pendingPdfExport=null;
 function downloadTimestamp(){const d=new Date(),pad=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;}
@@ -423,7 +448,8 @@ function attach(){
   $('closeBtn').addEventListener('click',()=>closeSession());
   $('entryForm').addEventListener('submit',addService);
   $('partialsBtn').addEventListener('click',async()=>{try{const s=await readOne(active.id);active=s;render();showList(s);}catch(e){markError(e);}});
-  $('historyBtn').addEventListener('click',showHistory);
+  $('historyBtn').addEventListener('click',()=>{$('historyModeFilter').value=currentUsageMode();showHistory();});
+  $('historyModeFilter').addEventListener('change',showHistory);$('monthModeFilter').addEventListener('change',()=>refreshMonth().catch(markError));$('usageMode').addEventListener('change',updateUsageFields);
   $('monthlyBtn').addEventListener('click',showMonthly);
   $('instructionsBtn').addEventListener('click',()=>showModal('instructionsDialog'));
   $('monthPicker').addEventListener('change',()=>{resetMonthDates();refreshMonth().catch(markError);});
