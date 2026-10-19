@@ -309,3 +309,33 @@ body{min-height:100%;}
   main{gap:9px;}
   .section-heading{margin-bottom:5px;}
 }
+
+/* v1.8.5: las tarjetas envuelven la proporción cuadrada del icono, sin marcos panorámicos. */
+@media (max-width:700px) and (orientation:portrait) and (min-height:591px){
+  .category-grid{justify-items:center;}
+  .category{width:auto!important;max-width:100%!important;height:100%!important;aspect-ratio:1/1!important;justify-self:center!important;align-self:center!important;padding:2px!important;border-radius:16px;}
+  .category::before{inset:2px;border-radius:13px;}
+  .category .category-logo{object-fit:cover;border-radius:12px;width:100%;height:100%;}
+  .category:last-child:nth-child(odd){grid-column:1!important;justify-self:center!important;width:auto!important;}
+  .details-section{gap:0;}
+  .overview-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;}
+  .overview-actions .partials-action,.overview-actions .history-action,.overview-actions .monthly-action{min-height:35px;font-size:11px;padding:5px 4px;}
+  .help-actions{margin-top:5px;display:block;}
+  .instructions-action{width:100%;min-width:0;min-height:35px;}
+}
+@media (max-width:700px) and (orientation:portrait) and (min-height:591px){
+  /* Cuarta acción como segunda columna de la segunda fila, sin otra fila adicional. */
+  .help-actions{display:contents;}
+  .details-section{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;}
+  .details-section>.section-heading{display:none;}
+  .overview-actions{display:contents;}
+  .overview-actions>*{min-width:0;width:100%;}
+  .instructions-action{height:100%;}
+}
+@media (max-width:700px) and (orientation:portrait) and (max-height:590px){
+  .category-grid{justify-items:center;}
+  .category{width:auto!important;height:100%!important;max-width:100%!important;aspect-ratio:1!important;justify-self:center!important;}
+  .category:last-child:nth-child(odd){justify-self:center!important;width:auto!important;}
+  .overview-actions{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .help-actions{width:100%;}
+}

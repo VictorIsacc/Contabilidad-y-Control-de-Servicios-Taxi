@@ -117,3 +117,10 @@ Novedad v1.8.4: botón de Instrucciones con guía visual de uso básico y posibi
 La pantalla principal utiliza el alto útil del móvil y dos columnas en orientación vertical. Los botones de registro cambian su altura para que puedan verse sin desplazar el contenido en pantallas habituales. En dispositivos de menos de 590 px de alto se mantiene el desplazamiento como opción de seguridad para no hacer botones demasiado pequeños. Las ventanas de informes, historial e instrucciones siguen siendo desplazables.
 
 El manifiesto mantiene la identidad de la PWA y el modo standalone. El service worker utiliza ahora una caché nueva y consulta la red primero cuando existe conexión para evitar que versiones antiguas queden bloqueadas. Para ver el resultado en Android, refresca la URL con Chrome y abre la aplicación instalada desde su icono. Si Android dice que ya está instalada, comprueba el cajón de aplicaciones antes de crear un acceso directo nuevo. No borres almacenamiento ni desinstales sin exportar una copia JSON de las jornadas. La instalación standalone requiere HTTPS (por ejemplo GitHub Pages) y Chrome compatible.
+
+## Novedad 1.8.5
+- Los botones de plataforma se ajustan a la proporción cuadrada de los logos en vez de dejar tarjetas rectangulares anchas.
+- El séptimo botón permanece en la columna izquierda.
+- Los accesos Parciales, Historial, Mensual e Instrucciones se distribuyen en dos filas de dos columnas.
+- Se conserva la apariencia atenuada de las plataformas mientras la jornada está cerrada.
+- Se renueva el identificador de la caché de la PWA; se conserva la identidad de instalación y la base de datos existente.
