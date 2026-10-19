@@ -88,16 +88,12 @@ class TaxiPDFReport{
  }
  finish(){return [...this.pages,this.content];}
 }
-function pdfCashStrip(report,value,label='Distribución de los cobros brutos'){
- const c=PDF_COLORS;report.ensure(85);const top=report.y,total=value.cash+value.boss+value.unclassified;
- report.content+=pdfText(label,36,top-10,9,true,c.ink);
- report.content+=pdfPaymentLegend(300,top-12);
- const segments=[[value.cash,c.green],[value.boss,c.blue],[value.unclassified,c.amber]];let x=36;
- report.content+=pdfBox(36,top-33,523,12,c.line,5);
- for(const [amount,color] of segments){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-33,width,12,color);x+=width;}}
- report.content+=pdfText('EFECTIVO DEL CHÓFER',36,top-51,7.5,true,c.green)+pdfText(pdfSafeMoney(value.cash),36,top-66,11,true,c.green,165);
- report.content+=pdfText('COBRADO POR EL JEFE',214,top-51,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-66,11,true,c.blue,165);
- report.content+=pdfText('SIN CLASIFICAR',392,top-51,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-66,11,true,c.amber,165);report.y-=85;
+function pdfCashStrip(report,value,label='Cobros utilizados en la liquidación'){
+ const c=PDF_COLORS;report.ensure(85);const top=report.y,rows=[['EFECTIVO DEL CHÓFER',value.cash,c.green]];
+ if(value.centralDriver)rows.push(['ABONADOS DEL CHÓFER (NETO)',value.centralDriver,c.purple]);rows.push(['JEFE / CENTRAL (BRUTO)',value.boss,c.blue],['SIN CLASIFICAR',value.unclassified,c.amber]);
+ const total=rows.reduce((n,row)=>n+row[1],0);report.content+=pdfText(label,36,top-10,9,true,c.ink,245)+pdfPaymentLegend(300,top-12)+pdfBox(36,top-33,523,12,c.line,5);let x=36;
+ for(const [,amount,color] of rows){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-33,width,12,color);x+=width;}}
+ const width=523/rows.length;rows.forEach(([title,amount,color],i)=>{const x=36+i*width;report.content+=pdfText(title,x,top-51,7.5,true,color,width-6)+pdfText(pdfSafeMoney(amount),x,top-66,11,true,color,width-6);});report.y-=85;
 }
 function pdfMethodCountStrip(report,counts){
  const c=PDF_COLORS;report.ensure(52);const top=report.y;
@@ -130,7 +126,7 @@ function pdfDriverOverview(model){
  const c=PDF_COLORS,value=model.value,d=new TaxiPDFReport(model.title,model.subtitle,model.badge,model.example);
  d.cards([
   ['Ganancia del chófer',value.configured?pdfSafeMoney(value.earnings):'Sin configurar',c.purple,c.purpleLight,'Después de comisiones y seguro'],
-  ['Efectivo cobrado',pdfSafeMoney(value.cash),c.green,c.greenLight,'Dinero cobrado por el chófer'],
+  ['Dinero recibido',pdfSafeMoney(value.driverReceived),c.green,c.greenLight,'Efectivo y abonados netos recibidos'],
   ['Diferencia a liquidar',value.ready?pdfSafeMoney(Math.abs(value.balance)):'Pendiente',value.ready&&value.balance<0?c.blue:c.amber,value.ready&&value.balance<0?c.blueLight:c.amberLight,'Ver quién debe pagar debajo']
  ]);
  d.payout(value,model.scope||'');
@@ -138,16 +134,16 @@ function pdfDriverOverview(model){
  const rows=[['Facturación bruta',pdfSafeMoney(model.gross)],['Comisiones de plataformas','- '+pdfSafeMoney(model.commission)],['Base para reparto',pdfSafeMoney(model.base)],['Participación del chófer'+(model.percent?' ('+model.percent+')':''),value.configured?pdfSafeMoney(model.share):'Sin configurar'],[model.period?'Seguro total del periodo':'Seguro diario'+(model.insuranceApplied===false?' (no aplicado)':''),value.configured?'- '+pdfSafeMoney(model.insurance):'Sin configurar']];
  for(let i=0;i<rows.length;i++){const y=d.y-27;d.content+=pdfBox(36,y,523,27,i%2?'#eaf0f8':c.white,4)+pdfText(rows[i][0],48,y+9,9,false,c.ink,340)+pdfText(rows[i][1],547,y+9,10,true,c.ink,150,'right');d.y-=29;}
  d.y-=15;pdfCashStrip(d,value,model.period?'Cobros de las jornadas con porcentaje':'Quién ha cobrado los servicios');
- d.note('Saldo = ganancia del chófer menos efectivo cobrado. App y TPV los cobra el jefe. Abonado, Imbric y Join Up se cobran en central. Los registros anteriores conservan su modalidad guardada. No descuenta entregas ni anticipos ya realizados.');
+ d.note('Saldo = ganancia del chófer menos efectivo y abonados netos recibidos. App y TPV los cobra el jefe. Los abonados siguen en central; si los recibe el chófer se usa su neto, sin volver a descontar comisiones. No descuenta entregas ni anticipos ya realizados.');
  if(model.period)d.note('Solo se liquidan jornadas con porcentaje configurado. El seguro solo se descuenta en las jornadas donde estaba activado. Las jornadas antiguas sin modalidad de cobro pueden dejar el saldo pendiente.');
  return d.finish();
 }
 function pdfDriverPage(s){return pdfDriverOverview({title:'Ganancias del conductor',subtitle:pdfSessionSubtitle(s),badge:'INFORME DEL CHÓFER',example:!!s.reportExample,value:settlement(s),gross:totalCents(s),commission:totalCommission(s),base:accountingTotal(s),share:driverShare(s),insurance:driverInsurance(s),insuranceApplied:s.insuranceEnabled!==false,percent:driverOn(s)?percentLabel(s):'',scope:s.services.length+' servicios'} )[0];}
 function pdfCollectionsPage(s){
  const c=PDF_COLORS,value=settlement(s),d=new TaxiPDFReport('Cobros y liquidación',pdfSessionSubtitle(s),'RESUMEN DE JORNADA',!!s.reportExample);
- d.cards([['Efectivo del chófer',pdfSafeMoney(value.cash),c.green,c.greenLight,'Cobros en efectivo'],['Cobrado por el jefe',pdfSafeMoney(value.boss),c.blue,c.blueLight,centralCash(s)?'App y TPV':'App, TPV y cobros en central'],['Servicios registrados',String(s.services.length),c.purple,c.purpleLight,'Todas las plataformas']]);
- d.payout(value);pdfCashStrip(d,value,centralCash(s)?'Cobros brutos: abonados en efectivo':'Cobros brutos: abonados en central');pdfPlatformChart(d,monthAccounting([s]).rows);
- d.note('Importes por plataforma: total contabilizado. Los cobros se muestran en bruto. La liquidación no descuenta entregas ni anticipos ya realizados.');
+ d.cards([['Recibido por el chófer',pdfSafeMoney(value.driverReceived),c.green,c.greenLight,'Efectivo y abonados netos recibidos'],['Cobrado por el jefe',pdfSafeMoney(value.boss),c.blue,c.blueLight,centralCash(s)||centralReceived(s)?'App y TPV':'App, TPV y cobros en central'],['Servicios registrados',String(s.services.length),c.purple,c.purpleLight,'Todas las plataformas']]);
+ d.payout(value);pdfCashStrip(d,value,'Cobros utilizados en la liquidación');pdfPlatformChart(d,monthAccounting([s]).rows);
+ d.note('Importes por plataforma: total contabilizado. Modalidades en bruto; los abonados recibidos por el chófer se liquidan por el neto. La liquidación no descuenta entregas ni anticipos ya realizados.');
  return d.finish();
 }
 function exportPDF(customFilename){
@@ -160,7 +156,7 @@ function exportPDF(customFilename){
  d.cards([['Facturación bruta',pdfSafeMoney(totalCents(s)),c.blue,c.blueLight,'Importe de todos los servicios'],['Comisiones',pdfSafeMoney(totalCommission(s)),c.amber,c.amberLight,commissionsOn(s)?'Imbric 12 % - Join Up 10 %':'Descuentos desactivados'],['Total contabilizado',pdfSafeMoney(accountingTotal(s)),c.green,c.greenLight,commissionsOn(s)?'Neto después de comisiones':'Sin descuentos de comisión']]);
  pdfMethodCountStrip(d,paymentCounts(s));
  const columns=[{label:'Fecha y hora',width:103},{label:'Plataforma / cobro',width:180},{label:'Bruto',width:80,right:true},{label:'Comisión',width:78,right:true,color:c.amber},{label:'Neto',width:82,right:true,bold:true,color:c.green}];
- d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentIcon:effectiveMethod(item,s)||(CENTRAL_TYPES.includes(item.type)?'abonado':null),paymentMethod:effectiveMethod(item,s)||null,methodFallback:CENTRAL_TYPES.includes(item.type)?'Cobro en central':collectionOwner(item,s)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item,s),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
+ d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentIcon:effectiveMethod(item,s)||(CENTRAL_TYPES.includes(item.type)?'abonado':null),paymentMethod:effectiveMethod(item,s)||null,methodFallback:CENTRAL_TYPES.includes(item.type)?(centralReceived(s)?'Central · recibido chófer':'Cobro en central'):collectionOwner(item,s)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item,s),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
  const pages=d.finish();pages.push(...(isOwner(s)?pdfOwnerCollectionsPage(s):pdfCollectionsPage(s)));if(type==='both')pages.push(pdfDriverPage(s));createPDFPages(pages,customFilename||fileStem(s)+'.pdf');
 }
 function pdfPeriodOverview(m){
@@ -187,7 +183,7 @@ function monthlyPdf(customFilename){
   pages.push(...pdfDriverOverview({title:'Ganancias del conductor',subtitle:m.periodLabel+'  |  '+m.driverSessions.length+' de '+m.sessions.length+' jornadas con porcentaje',badge:'LIQUIDACIÓN DEL PERIODO',example:!!m.reportExample,period:true,scope:'Solo jornadas con porcentaje',value:m.settlement,gross:sumBy(m.driverSessions,totalCents),commission:sumBy(m.driverSessions,totalCommission),base:sumBy(m.driverSessions,accountingTotal),share:m.driverParticipation,insurance:m.insurance}));
   const d=new TaxiPDFReport('Detalle del conductor',m.periodLabel,'REPARTO Y LIQUIDACIÓN',!!m.reportExample);
   d.table('Cálculo de ganancias por jornada',[{label:'Inicio',width:115},{label:'%',width:36,right:true},{label:'Base',width:93,right:true},{label:'Participación',width:93,right:true},{label:'Seguro',width:93,right:true},{label:'Ganancia',width:93,right:true,bold:true,color:c.purple}],m.driverSessions.map(s=>({cells:[dateText(s.startedAt),percentLabel(s),pdfSafeMoney(accountingTotal(s)),pdfSafeMoney(driverShare(s)),pdfSafeMoney(driverInsurance(s)),pdfSafeMoney(driverEarnings(s))]})));
-  d.table('Efectivo y saldo de cada jornada',[{label:'Inicio',width:115},{label:'Ganancia',width:102,right:true,color:c.purple},{label:'Efectivo',width:102,right:true,color:c.green},{label:'Paga el jefe',width:102,right:true,bold:true,color:c.green},{label:'Entrega el chófer',width:102,right:true,bold:true,color:c.blue}],m.driverSessions.map(s=>{const v=settlement(s);return {cells:[dateText(s.startedAt),pdfSafeMoney(v.earnings),pdfSafeMoney(v.cash),v.ready?pdfSafeMoney(v.fromBoss):'Pendiente',v.ready?pdfSafeMoney(v.toBoss):'Pendiente']};}));
+  d.table('Dinero recibido y saldo de cada jornada',[{label:'Inicio',width:115},{label:'Ganancia',width:102,right:true,color:c.purple},{label:'Recibido',width:102,right:true,color:c.green},{label:'Paga el jefe',width:102,right:true,bold:true,color:c.green},{label:'Entrega el chófer',width:102,right:true,bold:true,color:c.blue}],m.driverSessions.map(s=>{const v=settlement(s);return {cells:[dateText(s.startedAt),pdfSafeMoney(v.earnings),pdfSafeMoney(v.driverReceived),v.ready?pdfSafeMoney(v.fromBoss):'Pendiente',v.ready?pdfSafeMoney(v.toBoss):'Pendiente']};}));
   d.note('La liquidación del periodo compensa los saldos de sus jornadas. Solo se incluyen jornadas con porcentaje configurado. No se descuentan entregas ni anticipos anteriores. Un cobro sin clasificar deja el saldo pendiente.');pages.push(...d.finish());
  }
  createPDFPages(pages,customFilename||`contabilidad-control-servicios-taxi-resumen-${m.from}_${m.to}-${type}.pdf`);

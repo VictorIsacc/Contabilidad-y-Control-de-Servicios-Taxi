@@ -33,12 +33,13 @@ const driverEarnings = session => driverShare(session) - driverInsurance(session
 const percentLabel = session => (session.driverBasisPoints / 100).toLocaleString('es-ES',{maximumFractionDigits:2}) + ' %';
 // Cobros brutos: el efectivo físico no se reduce por las comisiones de plataforma.
 const CENTRAL_TYPES=['abonado','imbric','joinup'];
+const centralReceived=session=>!isOwner(session)&&session?.centralReceivedByDriver===true;
 const centralCash=session=>!isOwner(session)&&session?.centralCashByDriver===true;
 const effectiveMethod=(svc,session)=>CENTRAL_TYPES.includes(svc.type)?(centralCash(session)?'efectivo':null):svc.paymentMethod;
-function centralServiceLabel(type,session){return (centralCash(session)?'💵 ':'🧾 ')+nameType(type)+(centralCash(session)?' · efectivo del chófer':' · cobro en central');}
+function centralServiceLabel(type,session){return (centralCash(session)?'💵 ':'🧾 ')+nameType(type)+(centralCash(session)?' · efectivo del chófer':' · cobro en central'+(centralReceived(session)?' · cobrado por el chófer':''));}
 function collectionOwner(svc,session){
   if(isOwner(session)){if(CENTRAL_TYPES.includes(svc.type))return 'central';return ['efectivo','app','tpv'].includes(svc.paymentMethod)?'titular':'sin-clasificar';}
-  if(CENTRAL_TYPES.includes(svc.type))return centralCash(session)?'conductor':'jefe';
+  if(CENTRAL_TYPES.includes(svc.type))return centralCash(session)||centralReceived(session)?'conductor':'jefe';
   if(svc.paymentMethod==='efectivo')return 'conductor';
   if(['app','tpv'].includes(svc.paymentMethod))return 'jefe';
   return 'sin-clasificar';
@@ -53,7 +54,7 @@ function paymentBreakdown(session){
  return result;
 }
 function sumPayments(sessions){return sessions.reduce((all,s)=>{const p=paymentBreakdown(s);for(const key of Object.keys(all))all[key]+=p[key];return all;},{cash:0,app:0,tpv:0,central:0,unclassified:0});}
-function collections(session){const p=paymentBreakdown(session);return {cash:p.cash,boss:p.app+p.tpv+p.central,unclassified:p.unclassified};}
+function collections(session){const p=paymentBreakdown(session),centralDriver=centralReceived(session)?session.services.filter(s=>CENTRAL_TYPES.includes(s.type)).reduce((n,s)=>n+accountingValue(s,session),0):0,centralDriverGross=centralReceived(session)?p.central:0;return {cash:p.cash,centralDriver,centralDriverGross,driverReceived:p.cash+centralDriver,boss:p.app+p.tpv+p.central-centralDriverGross,unclassified:p.unclassified};}
 function renderPaymentBreakdown(element,value,title='Cobros por modalidad'){
  element.replaceChildren();const h=document.createElement('h3');h.textContent=title;element.append(h);
  for(const [label,key] of [['💵 Efectivo','cash'],['📱 App','app'],['💳 TPV','tpv'],['🧾 Cobro en central','central']])appendSummaryLine(element,label,money(value[key]));
@@ -65,7 +66,7 @@ function updateUsageFields(){const owner=$('usageMode').value==='owner';$('drive
 function updateRoleGuides(){const owner=currentUsageMode()==='owner';document.querySelector('.instruction-hero-card p').textContent=owner?'Registra la facturación completa del titular, las comisiones de las plataformas y los servicios por efectivo, App, TPV y cobro en central. Consulta resúmenes y exporta PDF y JSON.':'Registra tus servicios, comisiones y ganancias del conductor. Consulta jornadas y genera informes PDF y JSON.';$('ownerInstructions').hidden=!owner;$('driverInstructions').hidden=owner;$('driverSettlementGuide').hidden=owner;}
 function settlement(session){
   const c=collections(session),configured=driverOn(session),ready=configured&&c.unclassified===0;
-  const balance=ready?driverEarnings(session)-c.cash:null;
+  const balance=ready?driverEarnings(session)-c.driverReceived:null;
   return {...c,configured,ready,earnings:configured?driverEarnings(session):null,balance,fromBoss:ready?Math.max(balance,0):null,toBoss:ready?Math.max(-balance,0):null};
 }
 function settlementLabel(value){
@@ -74,7 +75,7 @@ function settlementLabel(value){
   return value.balance>0?'El jefe debe pagar al chófer':value.balance<0?'El chófer debe entregar al jefe':'Liquidación equilibrada';
 }
 function settlementText(value){return settlementLabel(value)+(value.ready?' · '+money(Math.abs(value.balance)):'');}
-function settlementJSON(value){return {efectivoConductorCentimos:value.cash,cobradoJefeBrutoCentimos:value.boss,sinClasificarCentimos:value.unclassified,calculable:value.ready,gananciaConductorCentimos:value.earnings,saldoAFavorConductorCentimos:value.balance,jefePagaConductorCentimos:value.fromBoss,conductorEntregaJefeCentimos:value.toBoss,criterio:'Ganancia del conductor menos efectivo cobrado. No descuenta entregas ni anticipos ya realizados.'};}
+function settlementJSON(value){return {efectivoConductorCentimos:value.cash,abonadosRecibidosConductorNetosCentimos:value.centralDriver,abonadosRecibidosConductorBrutosCentimos:value.centralDriverGross,totalRecibidoConductorCentimos:value.driverReceived,cobradoJefeBrutoCentimos:value.boss,sinClasificarCentimos:value.unclassified,calculable:value.ready,gananciaConductorCentimos:value.earnings,saldoAFavorConductorCentimos:value.balance,jefePagaConductorCentimos:value.fromBoss,conductorEntregaJefeCentimos:value.toBoss,criterio:'Ganancia del conductor menos efectivo y abonados netos recibidos por el conductor. No descuenta entregas ni anticipos ya realizados.'};}
 function appendSummaryLine(element,label,value,final=false){
   const row=document.createElement('div');row.className='driver-line'+(final?' driver-final':'');
   const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=value;row.append(a,b);element.append(row);
@@ -83,16 +84,17 @@ function renderCollections(element,session){
   if(isOwner(session)){renderPaymentBreakdown(element,paymentBreakdown(session),'Cobros del titular por modalidad');return;}
   const c=collections(session);element.replaceChildren();const h=document.createElement('h3');h.textContent='Quién ha cobrado los servicios';element.append(h);
   appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(c.cash));
+  if(centralReceived(session)){appendSummaryLine(element,'🧾 Abonados recibidos por el chófer (neto)',money(c.centralDriver));appendSummaryLine(element,'Total recibido por el chófer',money(c.driverReceived),true);}
   appendSummaryLine(element,'📱 💳 🧾 Cobrado por el jefe o en central',money(c.boss));
   if(c.unclassified)appendSummaryLine(element,'Cobros antiguos sin clasificar',money(c.unclassified));
-  const note=document.createElement('p');note.className='hint';note.textContent=centralCash(session)?'Abonado, Imbric y Join Up: efectivo cobrado por el chófer en esta jornada. Cobros mostrados en bruto.':'Abonado, Imbric y Join Up: cobro en central. Cobros mostrados en bruto.';element.append(note);
+  const note=document.createElement('p');note.className='hint';note.textContent=centralReceived(session)?'Abonado, Imbric y Join Up: cobro en central recibido por el chófer, descontando las comisiones activadas. No se cuenta como efectivo.':centralCash(session)?'Abonado, Imbric y Join Up: efectivo cobrado por el chófer en esta jornada. Cobros mostrados en bruto.':'Abonado, Imbric y Join Up: cobro en central. Cobros mostrados en bruto.';element.append(note);
 }
 function moneyOrDash(session){return isOwner(session)?'—':driverOn(session)?money(driverEarnings(session)):'Sin configurar';}
 function parseNonnegativeCents(input){const val=String(input).trim().replace(/\s/g,'').replace(/€/g,'').replace(',','.');if(!/^\d+(?:\.\d{1,2})?$/.test(val))return null;const [a,b='']=val.split('.');const n=Number(a)*100+Number((b+'00').slice(0,2));return Number.isSafeInteger(n)&&n>=0&&n<=999999999?n:null;}
 function parsePercentBasisPoints(input){const val=String(input).trim().replace(',','.');if(!/^\d{1,3}(?:\.\d{1,2})?$/.test(val))return null;const n=Math.round(Number(val)*100);return n>=0&&n<=10000?n:null;}
 
 
-const serviceLabel = (x,session) => nameType(x.type)+(CENTRAL_TYPES.includes(x.type)?(centralCash(session)?' · Efectivo del chófer':' · Cobro en central'):(x.paymentMethod?' · '+(METHOD_NAMES[x.paymentMethod]||x.paymentMethod):''));
+const serviceLabel = (x,session) => nameType(x.type)+(CENTRAL_TYPES.includes(x.type)?(centralCash(session)?' · Efectivo del chófer':' · Cobro en central'+(centralReceived(session)?' · Cobrado por el chófer':'')):(x.paymentMethod?' · '+(METHOD_NAMES[x.paymentMethod]||x.paymentMethod):''));
 const $ = id => document.getElementById(id);
 let monthSnapshot=null;
 const money = cents => (cents / 100).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -190,7 +192,7 @@ async function startSession(){
   if(active)return;
   const sessions=await readAll();const existing=sessions.find(s=>!s.closedAt);
   if(existing){active=existing;render();notify('Se ha recuperado la jornada abierta');return;}
-  $('insuranceToggle').checked=true;$('driverInsurance').disabled=false;
+  $('centralReceivedToggle').checked=false;$('insuranceToggle').checked=true;$('driverInsurance').disabled=false;
   loadDriverDefaults();$('usageMode').value=preferredUsageMode();$('rememberUsageMode').checked=true;updateUsageFields();
   showModal('startDialog');
 }
@@ -206,7 +208,7 @@ async function confirmStartSession(e){
    const insurance=useDriver?(parseNonnegativeCents($('driverInsurance').value)??(insuranceEnabled?null:0)):0;
    if(useDriver&&(pct===null||insurance===null)){notify('Introduce un porcentaje entre 0 y 100 y un seguro diario válido');return;}
    const now=new Date().toISOString();
-   const s={schemaVersion:5,usageMode,insuranceEnabled,centralCashByDriver:false,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
+   const s={schemaVersion:6,usageMode,insuranceEnabled,centralCashByDriver:false,centralReceivedByDriver:!owner&&$('centralReceivedToggle').checked,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
    await writeOne(s);let modeSaved=true;try{if($('rememberUsageMode').checked)localStorage.setItem(USAGE_MODE_KEY,usageMode);}catch(e){modeSaved=false;}const defaultsSaved=storeDriverDefaults(s)&&modeSaved;active=s;hideModal('startDialog');render();notify(defaultsSaved?'Jornada iniciada. Ya puedes añadir servicios.':'Jornada iniciada, pero no se pudieron fijar los valores para nuevas jornadas.');
  }catch(e){markError(e);}
 
@@ -225,8 +227,9 @@ function renderDriverLines(element,session){
  for(const [label,value] of data)appendSummaryLine(element,label,value);
  const result=settlement(session);
  appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(result.cash));
+ if(result.centralDriver){appendSummaryLine(element,'🧾 Abonados recibidos por el chófer (neto)',money(result.centralDriver));appendSummaryLine(element,'Total recibido por el chófer',money(result.driverReceived));}
  appendSummaryLine(element,settlementLabel(result),result.ready?money(Math.abs(result.balance)):'Sin calcular',true);
- const note=document.createElement('p');note.className='hint';note.textContent='Ganancia menos efectivo cobrado. No descuenta entregas ni anticipos ya realizados.';element.append(note);
+ const note=document.createElement('p');note.className='hint';note.textContent='Ganancia menos efectivo y abonados netos recibidos por el chófer. No descuenta entregas ni anticipos ya realizados.';element.append(note);
 }
 function showList(session){
  listSession=session;
@@ -334,7 +337,7 @@ function download(blob,filename){
 function fileStem(s){const d=new Date(s.startedAt);const part=n=>String(n).padStart(2,'0');return `contabilidad-control-servicios-taxi-${d.getFullYear()}-${part(d.getMonth()+1)}-${part(d.getDate())}-${part(d.getHours())}${part(d.getMinutes())}`;}
 function exportJSON(){
  if(!listSession)return;const s=listSession;
- const json={app:'Contabilidad y Control de Servicios Taxi',version:9,usageMode:isOwner(s)?'owner':'driver',id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:commissionsOn(s)?'neto':'bruto',cobros:paymentBreakdown(s),serviciosPorModalidad:paymentCounts(s),...(isOwner(s)?{resultadoTitularCentimos:accountingTotal(s)}:{insuranceEnabled:s.insuranceEnabled!==false,centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null}}),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionsOn(s)?(COMMISSION_RATES[x.type]||0):0,comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};
+ const json={app:'Contabilidad y Control de Servicios Taxi',version:10,usageMode:isOwner(s)?'owner':'driver',id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:commissionsOn(s)?'neto':'bruto',cobros:paymentBreakdown(s),serviciosPorModalidad:paymentCounts(s),...(isOwner(s)?{resultadoTitularCentimos:accountingTotal(s)}:{insuranceEnabled:s.insuranceEnabled!==false,centralReceivedByDriver:centralReceived(s),centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null}}),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionsOn(s)?(COMMISSION_RATES[x.type]||0):0,comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};
  download(new Blob([JSON.stringify(json,null,2)],{type:'application/json;charset=utf-8'}),fileStem(s)+'.json');notify('JSON preparado para descargar');
 }
 // Los informes PDF se generan localmente en pdf-report.js.
@@ -354,8 +357,9 @@ function monthAccounting(sessions){
 function periodSettlement(sessions){
   const configuredSessions=sessions.filter(driverOn),values=configuredSessions.map(settlement);
   const cash=sumBy(values,v=>v.cash),boss=sumBy(values,v=>v.boss),unclassified=sumBy(values,v=>v.unclassified);
-  const configured=configuredSessions.length>0,ready=configured&&values.every(v=>v.ready),earnings=sumBy(configuredSessions,driverEarnings),balance=ready?earnings-cash:null;
-  return {cash,boss,unclassified,configured,ready,earnings:configured?earnings:null,balance,fromBoss:ready?Math.max(balance,0):null,toBoss:ready?Math.max(-balance,0):null};
+  const centralDriver=sumBy(values,v=>v.centralDriver),centralDriverGross=sumBy(values,v=>v.centralDriverGross),driverReceived=cash+centralDriver;
+  const configured=configuredSessions.length>0,ready=configured&&values.every(v=>v.ready),earnings=sumBy(configuredSessions,driverEarnings),balance=ready?earnings-driverReceived:null;
+  return {cash,centralDriver,centralDriverGross,driverReceived,boss,unclassified,configured,ready,earnings:configured?earnings:null,balance,fromBoss:ready?Math.max(balance,0):null,toBoss:ready?Math.max(-balance,0):null};
 }
 function localDay(iso){const d=new Date(iso);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function displayDay(day){return day.split('-').reverse().join('/');}
@@ -366,7 +370,7 @@ function resetMonthDates(){
 }
 function exportPeriodJSON(){
  const m=monthSnapshot;if(!m||!m.sessions.length)return;
- const payload={app:'Contabilidad y Control de Servicios Taxi',version:9,filtroModo:$('monthModeFilter').value,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:m.payments,serviciosPorModalidad:m.paymentCounts,...(m.ownerSessions.length?{jornadasTitular:m.ownerSessions.length,resultadoTitularCentimos:m.ownerTotal}:{}),...(m.driverSessions.length?{seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length}}:{}),jornadas:m.sessions.map(s=>isOwner(s)?{...s,serviciosPorModalidad:paymentCounts(s),resultadoTitularCentimos:accountingTotal(s)}:{...s,serviciosPorModalidad:paymentCounts(s),liquidacion:settlementJSON(settlement(s))})};
+ const payload={app:'Contabilidad y Control de Servicios Taxi',version:10,filtroModo:$('monthModeFilter').value,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:m.payments,serviciosPorModalidad:m.paymentCounts,...(m.ownerSessions.length?{jornadasTitular:m.ownerSessions.length,resultadoTitularCentimos:m.ownerTotal}:{}),...(m.driverSessions.length?{seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length}}:{}),jornadas:m.sessions.map(s=>isOwner(s)?{...s,serviciosPorModalidad:paymentCounts(s),resultadoTitularCentimos:accountingTotal(s)}:{...s,serviciosPorModalidad:paymentCounts(s),liquidacion:settlementJSON(settlement(s))})};
  download(new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'}),`contabilidad-taxi-periodo-${m.from}_${m.to}.json`);notify('JSON del periodo preparado para descargar');
 }
 function td(text){const cell=document.createElement('td');cell.textContent=text;return cell;}
@@ -393,7 +397,7 @@ async function refreshMonth(){
   $('monthMeanSession').textContent=money(m.averageSession);$('monthCommission').textContent=money(m.commission);
   $('monthDriver').hidden=!m.driverSessions.length;
   if(m.driverSessions.length){const d=$('monthDriver');d.replaceChildren();const h=document.createElement('h3');h.textContent='Ganancias del conductor';d.append(h);
-    for(const [a,b] of [['Jornadas con porcentaje configurado',String(m.driverSessions.length)+' / '+String(m.sessions.length)],['Participación acumulada',money(m.driverParticipation)],['Seguro total descontado','−'+money(m.insurance)],['Jornadas con seguro descontado',String(m.insuranceDays)],['GANANCIA DEL PERIODO',money(m.driverTotal)],['💵 Efectivo (jornadas con porcentaje)',money(m.settlement.cash)],['Cobrado por el jefe (jornadas con porcentaje)',money(m.settlement.boss)]])appendSummaryLine(d,a,b);
+    for(const [a,b] of [['Jornadas con porcentaje configurado',String(m.driverSessions.length)+' / '+String(m.sessions.length)],['Participación acumulada',money(m.driverParticipation)],['Seguro total descontado','−'+money(m.insurance)],['Jornadas con seguro descontado',String(m.insuranceDays)],['GANANCIA DEL PERIODO',money(m.driverTotal)],['💵 Efectivo (jornadas con porcentaje)',money(m.settlement.cash)],['🧾 Abonados recibidos por el chófer (neto)',money(m.settlement.centralDriver)],['Total recibido por el chófer',money(m.settlement.driverReceived)],['Cobrado por el jefe (jornadas con porcentaje)',money(m.settlement.boss)]])appendSummaryLine(d,a,b);
     appendSummaryLine(d,settlementLabel(m.settlement),m.settlement.ready?money(Math.abs(m.settlement.balance)):'Sin calcular',true);
     const note=document.createElement('p');note.className='hint';note.textContent='Solo se liquidan jornadas con porcentaje configurado. No descuenta entregas ni anticipos ya realizados.';d.append(note);}
   renderPaymentBreakdown($('monthCollections'),m.payments,'Cobros de las jornadas seleccionadas');

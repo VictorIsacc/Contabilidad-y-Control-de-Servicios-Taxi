@@ -1,4 +1,4 @@
-# Contabilidad y Control de Servicios Taxi · PWA 1.11.0
+# Contabilidad y Control de Servicios Taxi · PWA 1.11.1
 
 Publicación estable: https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
 
@@ -24,7 +24,7 @@ Las comisiones conservan Imbric 12 % y Join Up 10 % cuando se activan al iniciar
 
 Instrucciones → Datos y copias JSON permite exportar y cargar copias completas: jornadas, servicios, cobros, comisiones, modo de cada jornada, porcentaje y seguro, ajustes fijados, tema y modo habitual. También se pueden cargar JSON anteriores de jornada o periodo.
 
-Formato JSON 9, esquema de jornada 5. Actualiza tanto PWA como APK a **1.11.0** para intercambiar las nuevas copias. Se preservan los registros históricos con modalidad anterior al nuevo esquema. Las jornadas idénticas no se duplican y las diferentes solo se sustituyen con elección expresa. La importación se valida completa y se escribe en una transacción; también se restauran los ajustes si falla la escritura.
+Formato JSON 10, esquema de jornada 6. Actualiza tanto PWA como APK a **1.11.1** para intercambiar las nuevas copias. Se preservan los registros históricos con modalidad anterior al nuevo esquema. Las jornadas idénticas no se duplican y las diferentes solo se sustituyen con elección expresa. La importación se valida completa y se escribe en una transacción; también se restauran los ajustes si falla la escritura.
 
 Límites: UTF-8, 20 MB, 10.000 jornadas y 100.000 servicios por archivo. Las copias se transfieren manualmente, sin sincronización automática. Antes de sustituir datos, exporta una copia de los actuales.
 
@@ -41,3 +41,11 @@ La identidad se mantiene estable:
 No uses identificadores genéricos ni cambies la ruta. El trabajador sin conexión se limita a esta carpeta. Las cachés tienen prefijo propio por aplicación y ruta; solo se borran sus versiones anteriores. IndexedDB sigue siendo TaxiJornadaDB, versión 1, almacén sessions. Preferencias locales: taxi-theme, taxi-driver-defaults-v1 y taxi-usage-mode-v1.
 
 Los recursos, PDF y JSON funcionan sin conexión después de la primera carga completa. No se envían jornadas a GitHub. Para publicar el ZIP, extrae los archivos en la raíz del mismo repositorio, sin una carpeta de versión adicional. No subas la APK ni la clave privada al repositorio de la PWA.
+
+## Opción recuperada: abonados recibidos por el chófer
+
+«Los abonados los cobra el chófer» se configura al iniciar cada jornada de modo Chófer y afecta a Abonado, Imbric y Join Up. La modalidad sigue siendo central: no aumenta el efectivo ni duplica los recuentos. Indica que el chófer ya recibió esos importes.
+
+Se suma al dinero recibido el neto calculado por la vista previa, después de las comisiones activadas. La comisión no se resta de nuevo. Si no se activan comisiones, se usa el importe introducido. La liquidación compara la ganancia según el porcentaje y seguro de la jornada con efectivo más abonados netos recibidos. Sin marcar la casilla se mantiene el cálculo anterior.
+
+El ajuste queda en cada jornada, PDF, resumen mensual y copia JSON (`centralReceivedByDriver`). Está desactivado por defecto para nuevas jornadas y no se aplica en Titular. Las jornadas históricas no se modifican. Actualiza PWA y APK a 1.11.1 para intercambiar formato 10; se siguen admitiendo las copias anteriores.
