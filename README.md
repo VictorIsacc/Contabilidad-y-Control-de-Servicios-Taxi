@@ -1,6 +1,6 @@
-# Contabilidad y Control de Servicios Taxi — PWA 1.9.1
+# Contabilidad y Control de Servicios Taxi — PWA 1.10.0
 
-Aplicación para GitHub Pages, adaptada de la versión Android 1.9.1. URL de publicación estable:
+Aplicación para GitHub Pages, adaptada de la versión Android 1.10.0. URL de publicación estable:
 
 https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
 
@@ -48,7 +48,7 @@ Se conservan las cachés antiguas de nombre ambiguo porque no se puede garantiza
 
 Los datos siguen en IndexedDB `TaxiJornadaDB`, versión 1, y las preferencias en el almacenamiento local. El tema usa `taxi-theme`; los valores por defecto del conductor usan `taxi-driver-defaults-v1`. No se envían jornadas a GitHub ni a servidores.
 
-El APK, los distintos navegadores y el modo privado pueden usar almacenes independientes. La copia completa JSON se exporta y carga desde Instrucciones → Datos y copias JSON, compatible con Android 1.9.1. Incluye todas las jornadas, servicios, cobros, comisiones, porcentajes y seguros por jornada, valores fijados para nuevas jornadas y tema. También permite cargar los JSON anteriores de una jornada o periodo. La transferencia se realiza mediante archivos; no hay sincronización automática. No borres datos del sitio ni desinstales sin copias comprobadas.
+El APK, los distintos navegadores y el modo privado pueden usar almacenes independientes. La copia completa JSON se exporta y carga desde Instrucciones → Datos y copias JSON, compatible con Android 1.10.0. Incluye todas las jornadas, servicios, cobros, comisiones, porcentajes y seguros por jornada, valores fijados para nuevas jornadas y tema. También permite cargar los JSON anteriores de una jornada o periodo. La transferencia se realiza mediante archivos; no hay sincronización automática. No borres datos del sitio ni desinstales sin copias comprobadas.
 
 ## Publicación
 
@@ -56,7 +56,7 @@ Los archivos de esta carpeta van en la raíz del repositorio que ya publica GitH
 
 El APK y su clave privada no forman parte de esta PWA ni deben subirse al repositorio. El generador PDF solo usa recursos incluidos y no necesita servicios remotos.
 
-## Novedades 1.9.1
+## Novedades 1.10.0
 
 - Copia completa e importación JSON con vista previa por meses y restauración opcional de ajustes generales.
 - Los registros idénticos no se duplican. Las jornadas distintas se conservan por defecto; solo se sustituyen al marcar la opción expresamente. El resto de jornadas se mantiene.
@@ -66,6 +66,16 @@ El APK y su clave privada no forman parte de esta PWA ni deben subirse al reposi
 - Botones de cobro con iconos: 💵 Efectivo, 💳 TPV y 📱 App.
 - Archivos UTF-8 de hasta 20 MB, 10.000 jornadas y 100.000 servicios por carga. Un JSON mensual no incluye ajustes generales salvo que sea una copia completa. Las comisiones de plataforma siguen siendo Imbric 12 % y Join Up 10 %, con activación guardada por jornada.
 
-## Ajustes 1.9.1
+## Ajustes 1.10.0
 
 Etiqueta corta 💳 TPV en toda la aplicación y los PDF. Abonados, Imbric y Join Up se identifican con 🧾 y «cobro en central» al registrar, consultar parciales y cierres, y con un recibo vectorial en el PDF. No cambia el cálculo ni la modalidad guardada.
+
+## Cobro de abonados por jornada · 1.10.0
+
+Al iniciar una jornada, «Los abonados los cobra el chófer» afecta a Abonado, Imbric y Join Up. Desactivado por defecto: cobro en central. Activado: los importes brutos se suman al efectivo del chófer y dejan de sumarse a cobros del jefe/central. El reparto usa el mismo porcentaje del conductor para todos los servicios de la jornada. No se aplica un 50 % adicional. Comisiones, base de reparto y seguro se mantienen.
+
+El ajuste queda en cada jornada (`centralCashByDriver`, esquema 4), no cambia las anteriores y se incluye en JSON de jornada, periodo y copia completa (formato 8). Las versiones anteriores no pueden interpretar este nuevo formato; actualiza tanto PWA como APK a 1.10.0 para intercambiarlo. Las copias antiguas sí se pueden cargar y conservan cobro en central.
+
+«Descontar seguro diario» se puede desactivar para una jornada. Se conserva la cuantía fijada para próximas jornadas; el descuento aplicado es cero ese día. El campo `insuranceEnabled` se conserva en cada jornada y en los JSON. Las jornadas antiguas sin el campo aplican el seguro como hasta ahora. Los resúmenes mensuales solo suman los seguros efectivamente activados.
+
+El resumen mensual y el PDF del periodo muestran el seguro total efectivamente descontado y el número de jornadas con descuento. También se exportan estos datos al JSON mensual.

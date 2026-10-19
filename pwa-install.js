@@ -1,5 +1,5 @@
 // No se deduce una instalación a partir de la ausencia del aviso ni de banderas guardadas.
-const TAXI_PWA_VERSION='1.9.1';
+const TAXI_PWA_VERSION='1.10.0';
 const TAXI_PWA_BASE=new URL('./',document.baseURI);
 let taxiInstallPrompt=null,taxiPwaRegistration=null,taxiInstallConfirmed=false,taxiApplyUpdate=false;
 function taxiStandalone(){return window.matchMedia('(display-mode: standalone)').matches||window.matchMedia('(display-mode: fullscreen)').matches||navigator.standalone===true;}

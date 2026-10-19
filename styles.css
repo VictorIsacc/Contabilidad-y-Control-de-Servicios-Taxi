@@ -370,3 +370,7 @@ body.light .services-frame{border-color:#6894ba}body.light .services-columns{bac
 @media(max-width:380px){.service-row,.services-columns{grid-template-columns:70px minmax(0,1fr) auto;padding-left:7px;padding-right:7px;gap:5px}.service-name,.service-amount{font-size:12px}}
 
 body.light .service-row .amount-gross{color:#526b85}body.light .service-row .amount-commission{color:#b73e31}body.light .service-row .amount-net{color:#147865}
+
+.central-config{margin:20px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel2)}.central-config .hint{margin-bottom:0}
+
+.insurance-stat{border-color:#9b7acb}.insurance-stat strong{color:#bba0ef}.insurance-stat small{font-size:11px;line-height:1.5;color:var(--muted)}body.light .insurance-stat strong{color:#6b3db5}
