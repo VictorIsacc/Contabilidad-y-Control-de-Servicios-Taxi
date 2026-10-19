@@ -3,14 +3,14 @@ const TYPES = [
   {id:'pidetaxi',name:'PideTaxi',icon:'🚖'},
   {id:'imbric',name:'Imbric',icon:'◈'},
   {id:'joinup',name:'Join Up',icon:'↗'},
-  {id:'abonado',name:'Abonado sin',icon:'◉'},
+  {id:'abonado',name:'Abonado',icon:'◉'},
   {id:'uber',name:'Uber',icon:'◆'},
   {id:'freenow',name:'Free Now',icon:'✦'},
   {id:'concertado',name:'Concertado',icon:'★'}
 ];
 const METHODS = {pidetaxi:['app','efectivo','tpv'],uber:['app','efectivo','tpv'],freenow:['app','efectivo','tpv'],concertado:['efectivo','tpv']};
 const METHOD_NAMES = {app:'App',efectivo:'Efectivo',tpv:'TPV'};
-const METHOD_UI={efectivo:'💵 Efectivo',tpv:'💳 Tarjeta / TPV',app:'📱 App'};
+const METHOD_UI={efectivo:'💵 Efectivo',tpv:'💳 TPV',app:'📱 App'};
 const COMMISSION_RATES = {imbric:12,joinup:10};
 const commissionsOn = session => session?.commissionEnabled === true;
 const commissionCents = (svc,session) => commissionsOn(session) && COMMISSION_RATES[svc.type] ? Math.round(svc.amountCents * COMMISSION_RATES[svc.type] / 100) : 0;
@@ -57,7 +57,7 @@ function appendSummaryLine(element,label,value,final=false){
 function renderCollections(element,session){
   const c=collections(session);element.replaceChildren();const h=document.createElement('h3');h.textContent='Quién ha cobrado los servicios';element.append(h);
   appendSummaryLine(element,'💵 Efectivo cobrado por el chófer',money(c.cash));
-  appendSummaryLine(element,'📱 💳 Cobrado por el jefe (App, TPV y abonados)',money(c.boss));
+  appendSummaryLine(element,'📱 💳 🧾 Cobrado por el jefe (App, TPV y abonados)',money(c.boss));
   if(c.unclassified)appendSummaryLine(element,'Cobros antiguos sin clasificar',money(c.unclassified));
   const note=document.createElement('p');note.className='hint';note.textContent='Imbric y Join Up también los cobra el jefe. Cobros mostrados en bruto.';element.append(note);
 }
@@ -133,7 +133,7 @@ function updateCommissionPreview(){
  $('commissionDeduction').textContent=raw===null?'—':'−'+money(ded);
  $('commissionNet').textContent=raw===null?'—':money(raw-ded);
 }
-function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=METHOD_UI[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}}
+function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=['abonado','imbric','joinup'].includes(type.id)?'🧾 '+type.name+' · cobro en central':type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=METHOD_UI[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}}
 function parseAmount(raw){
   const cleaned=raw.trim().replace(/\s/g,'').replace(/€/g,'');
   // Accept 1.234,56, 1234.56 and 12,50, but reject ambiguous repeated separators.
@@ -228,7 +228,7 @@ function showList(session){
    const row=document.createElement('div');row.className='service-row';
    const time=document.createElement('span');time.className='service-time';
    time.textContent=new Date(svc.at).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
-   const label=document.createElement('span');label.className='service-name';label.textContent=nameType(svc.type)+(svc.paymentMethod?' · '+(METHOD_UI[svc.paymentMethod]||svc.paymentMethod):'');
+   const label=document.createElement('span');label.className='service-name';label.textContent=['abonado','imbric','joinup'].includes(svc.type)?'🧾 '+nameType(svc.type)+' · cobro en central':nameType(svc.type)+(svc.paymentMethod?' · '+(METHOD_UI[svc.paymentMethod]||svc.paymentMethod):'');
    const amount=document.createElement('span');amount.className='service-amount';
    const comm=commissionCents(svc,session);
    if(commissionsOn(session)&&COMMISSION_RATES[svc.type]){amount.innerHTML=`<span class="amount-gross">Bruto ${money(svc.amountCents)}</span><span class="amount-commission">Comisión −${money(comm)}</span><span class="amount-net">Neto ${money(netCents(svc,session))}</span>`;}
@@ -363,7 +363,7 @@ async function refreshMonth(){
     appendSummaryLine(d,settlementLabel(m.settlement),m.settlement.ready?money(Math.abs(m.settlement.balance)):'Sin calcular',true);
     const note=document.createElement('p');note.className='hint';note.textContent='Solo se liquidan jornadas con porcentaje configurado. No descuenta entregas ni anticipos ya realizados.';d.append(note);}
   const c=$('monthCollections');c.replaceChildren();const h=document.createElement('h3');h.textContent='Cobros de todas las jornadas del periodo';c.append(h);
-  appendSummaryLine(c,'💵 Efectivo cobrado por el chófer',money(m.allCollections.cash));appendSummaryLine(c,'📱 💳 Cobrado por el jefe (bruto)',money(m.allCollections.boss));
+  appendSummaryLine(c,'💵 Efectivo cobrado por el chófer',money(m.allCollections.cash));appendSummaryLine(c,'📱 💳 🧾 Cobrado por el jefe (bruto)',money(m.allCollections.boss));
   if(m.allCollections.unclassified)appendSummaryLine(c,'Cobros antiguos sin clasificar',money(m.allCollections.unclassified));
   $('monthGrossLine').textContent=`Total bruto: ${money(m.gross)} · Comisiones: −${money(m.commission)} · Neto: ${money(m.gross-m.commission)}`;
   $('monthlyDays').replaceChildren();$('monthlyPlatforms').replaceChildren();

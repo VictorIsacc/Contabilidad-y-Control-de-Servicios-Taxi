@@ -26,13 +26,15 @@ function pdfPaymentIcon(method,x,y,size=14){
   out+=pdfText('€',9.6,9,8,true,c.white)+pdfBox(4,10,2,4,c.green)+pdfBox(18,10,2,4,c.green);
  }else if(method==='tpv'){
   out+=pdfBox(1,4,22,16,c.blue,2)+pdfBox(1,14,22,3,'#9dbcf0')+pdfBox(4,7,5,4,'#f5c24b',1)+pdfBox(12,8,7,1,c.white);
+ }else if(method==='abonado'){
+  out+=pdfBox(4,1,16,22,c.blue,1)+pdfBox(6,3,12,18,c.blueLight);for(const line of [7,11,15,18])out+=pdfBox(8,line,8,1,c.blue);
  }else if(method==='app'){
   out+=pdfBox(5,1,14,22,c.purple,3)+pdfBox(7,5,10,15,c.purpleLight,1)+pdfBox(10,2.5,4,1,c.white,.5)+pdfBox(9,11,6,5,c.purple,1);
  }
  return out+'Q\n';
 }
 function pdfPaymentLegend(x,y){
- let out='';for(const [method,label,offset] of [['efectivo','Efectivo',0],['tpv','Tarjeta / TPV',82],['app','App',198]])out+=pdfPaymentIcon(method,x+offset,y-3,17)+pdfText(label,x+offset+23,y+2,8.5,true,PDF_COLORS.muted);return out;
+ let out='';for(const [method,label,offset] of [['efectivo','Efectivo',0],['tpv','TPV',82],['app','App',198]])out+=pdfPaymentIcon(method,x+offset,y-3,17)+pdfText(label,x+offset+23,y+2,8.5,true,PDF_COLORS.muted);return out;
 }
 function pdfImage(key,x,y,w,h){return `q ${w} 0 0 ${h} ${x} ${y} cm /Img_${key} Do Q\n`;}
 function pdfWrap(text,width,size=9,bold=false){
@@ -77,7 +79,7 @@ class TaxiPDFReport{
   for(const row of rows){const height=row.serviceDetail?36:25;if(this.y-height<76){this.newPage();heading();}
    this.content+=pdfBox(36,this.y-height,523,height,rowIndex%2?'#eaf0f8':c.white);
    if(row.type)this.content+=pdfBox(36,this.y-height+3,3,height-6,PDF_PLATFORM_COLORS[row.type]||c.blue,1);
-   let x=36;columns.forEach((col,i)=>{let pad=8;if(row.serviceDetail&&i===1){if(row.logo)this.content+=pdfImage(row.logo,x+7,this.y-28,21,21);const methodLabel=row.paymentMethod?(METHOD_NAMES[row.paymentMethod]||row.paymentMethod):row.methodFallback;this.content+=pdfText(row.serviceName,x+34,this.y-12,8.5,true,c.ink,col.width-42);if(row.paymentMethod)this.content+=pdfPaymentIcon(row.paymentMethod,x+33,this.y-30,15);this.content+=pdfText(methodLabel,x+(row.paymentMethod?52:34),this.y-27,8,false,c.muted,col.width-(row.paymentMethod?60:42));x+=col.width;return;}if(row.logo&&row.logoColumn===i){this.content+=pdfImage(row.logo,x+7,this.y-21,17,17);pad=30;}
+   let x=36;columns.forEach((col,i)=>{let pad=8;if(row.serviceDetail&&i===1){if(row.logo)this.content+=pdfImage(row.logo,x+7,this.y-28,21,21);const methodLabel=row.paymentMethod?(METHOD_NAMES[row.paymentMethod]||row.paymentMethod):row.methodFallback;this.content+=pdfText(row.serviceName,x+34,this.y-12,8.5,true,c.ink,col.width-42);if(row.paymentIcon)this.content+=pdfPaymentIcon(row.paymentIcon,x+33,this.y-30,15);this.content+=pdfText(methodLabel,x+(row.paymentIcon?52:34),this.y-27,8,false,c.muted,col.width-(row.paymentIcon?60:42));x+=col.width;return;}if(row.logo&&row.logoColumn===i){this.content+=pdfImage(row.logo,x+7,this.y-21,17,17);pad=30;if(['abonado','imbric','joinup'].includes(row.type)){this.content+=pdfPaymentIcon('abonado',x+29,this.y-20,12);pad=45;}}
     this.content+=pdfText(row.cells[i]??'',col.right?x+col.width-8:x+pad,this.y-(row.serviceDetail?22:16),8.2,!!col.bold,col.color||c.ink,col.width-pad-8,col.right?'right':'left');x+=col.width;});
    this.y-=height;rowIndex++;
   }
@@ -119,7 +121,7 @@ function pdfDriverOverview(model){
  const rows=[['Facturación bruta',pdfSafeMoney(model.gross)],['Comisiones de plataformas','- '+pdfSafeMoney(model.commission)],['Base para reparto',pdfSafeMoney(model.base)],['Participación del chófer'+(model.percent?' ('+model.percent+')':''),value.configured?pdfSafeMoney(model.share):'Sin configurar'],['Seguro diario'+(model.period?' acumulado':''),value.configured?'- '+pdfSafeMoney(model.insurance):'Sin configurar']];
  for(let i=0;i<rows.length;i++){const y=d.y-27;d.content+=pdfBox(36,y,523,27,i%2?'#eaf0f8':c.white,4)+pdfText(rows[i][0],48,y+9,9,false,c.ink,340)+pdfText(rows[i][1],547,y+9,10,true,c.ink,150,'right');d.y-=29;}
  d.y-=15;pdfCashStrip(d,value,model.period?'Cobros de las jornadas con porcentaje':'Quién ha cobrado los servicios');
- d.note('Saldo = ganancia del chófer menos efectivo cobrado. App, tarjeta/TPV, abonados, Imbric y Join Up los cobra el jefe. No descuenta entregas ni anticipos ya realizados.');
+ d.note('Saldo = ganancia del chófer menos efectivo cobrado. App, TPV, abonados, Imbric y Join Up los cobra el jefe. No descuenta entregas ni anticipos ya realizados.');
  if(model.period)d.note('Solo se liquidan jornadas con porcentaje configurado. Los seguros se descuentan una vez por jornada. Las jornadas antiguas sin modalidad de cobro pueden dejar el saldo pendiente.');
  return d.finish();
 }
@@ -140,7 +142,7 @@ function exportPDF(customFilename){
  const c=PDF_COLORS,d=new TaxiPDFReport('Facturación de la jornada',pdfSessionSubtitle(s),'DETALLE DE SERVICIOS',!!s.reportExample);
  d.cards([['Facturación bruta',pdfSafeMoney(totalCents(s)),c.blue,c.blueLight,'Importe de todos los servicios'],['Comisiones',pdfSafeMoney(totalCommission(s)),c.amber,c.amberLight,commissionsOn(s)?'Imbric 12 % - Join Up 10 %':'Descuentos desactivados'],['Total contabilizado',pdfSafeMoney(accountingTotal(s)),c.green,c.greenLight,commissionsOn(s)?'Neto después de comisiones':'Sin descuentos de comisión']]);
  const columns=[{label:'Fecha y hora',width:103},{label:'Plataforma / cobro',width:180},{label:'Bruto',width:80,right:true},{label:'Comisión',width:78,right:true,color:c.amber},{label:'Neto',width:82,right:true,bold:true,color:c.green}];
- d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentMethod:item.paymentMethod||null,methodFallback:collectionOwner(item)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
+ d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentIcon:item.paymentMethod||(['abonado','imbric','joinup'].includes(item.type)?'abonado':null),paymentMethod:item.paymentMethod||null,methodFallback:['abonado','imbric','joinup'].includes(item.type)?'Cobro en central':collectionOwner(item)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
  const pages=d.finish();pages.push(...pdfCollectionsPage(s));if(type==='both')pages.push(pdfDriverPage(s));createPDFPages(pages,customFilename||fileStem(s)+'.pdf');
 }
 function pdfPeriodOverview(m){

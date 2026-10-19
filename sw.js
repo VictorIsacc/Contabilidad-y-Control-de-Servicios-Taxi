@@ -1,13 +1,13 @@
 const APP='contabilidad-control-servicios-taxi';
-const VERSION='1.9.0';
+const VERSION='1.9.1';
 const BASE=new URL('./',self.location.href);
 const PREFIX=APP+':'+encodeURIComponent(BASE.pathname)+':';
-const CACHE=PREFIX+VERSION+':3';
+const CACHE=PREFIX+VERSION;
 const ASSETS=['./','./index.html','./styles.css','./app.js','./json-transfer.js','./pdf-assets.js','./pdf-report.js','./pwa-install.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./logos/pidetaxi.webp','./logos/imbric.webp','./logos/joinup.webp','./logos/abonado.webp','./logos/uber.webp','./logos/freenow.webp','./logos/concertado.webp'];
 const URLS=ASSETS.map(path=>new URL(path,BASE).href);
 self.addEventListener('install',event=>{
  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(URLS.map(url=>new Request(url,{cache:'reload'})))));
- // Una actualizaciÃ³n espera a que el usuario la aplique; no interrumpe un servicio.
+ // Una actualización espera a que el usuario la aplique; no interrumpe un servicio.
 });
 self.addEventListener('message',event=>{if(event.data?.type==='ACTIVATE_TAXI_UPDATE')self.skipWaiting();});
 self.addEventListener('activate',event=>{
@@ -29,7 +29,7 @@ self.addEventListener('fetch',event=>{
    if(event.request.mode==='navigate'){
     const saved=await cache.match(new URL('index.html',BASE).href);if(saved)return saved;
    }
-   return new Response('Recurso no disponible sin conexiÃ³n.',{status:503,headers:{'Content-Type':'text/plain;charset=utf-8'}});
+   return new Response('Recurso no disponible sin conexión.',{status:503,headers:{'Content-Type':'text/plain;charset=utf-8'}});
   }
  })());
 });
