@@ -17,6 +17,23 @@ function pdfBox(x,y,w,h,color,r=0){
  if(r){r=Math.min(r,w/2,h/2);const k=r*0.55228475;path=`${x+r} ${y} m ${x+w-r} ${y} l ${x+w-r+k} ${y} ${x+w} ${y+r-k} ${x+w} ${y+r} c ${x+w} ${y+h-r} l ${x+w} ${y+h-r+k} ${x+w-r+k} ${y+h} ${x+w-r} ${y+h} c ${x+r} ${y+h} l ${x+r-k} ${y+h} ${x} ${y+h-r+k} ${x} ${y+h-r} c ${x} ${y+r} l ${x} ${y+r-k} ${x+r-k} ${y} ${x+r} ${y} c h`;}
  return `${pdfRGB(color)} rg ${path} f\n`;
 }
+// Símbolos vectoriales: se imprimen sin depender de fuentes emoji del dispositivo.
+function pdfPaymentIcon(method,x,y,size=14){
+ const c=PDF_COLORS,scale=size/24;let out=`q ${scale} 0 0 ${scale} ${x} ${y} cm\n`;
+ if(method==='efectivo'){
+  out+=pdfBox(1,5,22,14,c.green,2)+pdfBox(3,7,18,10,c.greenLight,1);
+  out+=`${pdfRGB(c.green)} rg 12 7 m 14.8 7 17 9.2 17 12 c 17 14.8 14.8 17 12 17 c 9.2 17 7 14.8 7 12 c 7 9.2 9.2 7 12 7 c f\n`;
+  out+=pdfText('€',9.6,9,8,true,c.white)+pdfBox(4,10,2,4,c.green)+pdfBox(18,10,2,4,c.green);
+ }else if(method==='tpv'){
+  out+=pdfBox(1,4,22,16,c.blue,2)+pdfBox(1,14,22,3,'#9dbcf0')+pdfBox(4,7,5,4,'#f5c24b',1)+pdfBox(12,8,7,1,c.white);
+ }else if(method==='app'){
+  out+=pdfBox(5,1,14,22,c.purple,3)+pdfBox(7,5,10,15,c.purpleLight,1)+pdfBox(10,2.5,4,1,c.white,.5)+pdfBox(9,11,6,5,c.purple,1);
+ }
+ return out+'Q\n';
+}
+function pdfPaymentLegend(x,y){
+ let out='';for(const [method,label,offset] of [['efectivo','Efectivo',0],['tpv','Tarjeta / TPV',130],['app','App',300]])out+=pdfPaymentIcon(method,x+offset,y-3,17)+pdfText(label,x+offset+23,y+2,8.5,true,PDF_COLORS.muted);return out;
+}
 function pdfImage(key,x,y,w,h){return `q ${w} 0 0 ${h} ${x} ${y} cm /Img_${key} Do Q\n`;}
 function pdfWrap(text,width,size=9,bold=false){
  const lines=[];let line='';for(const word of String(text).split(/\s+/)){const next=line?line+' '+word:word;if(line&&pdfWidth(next,size,bold)>width){lines.push(line);line=word;}else line=next;}if(line)lines.push(line);return lines;
@@ -57,11 +74,11 @@ class TaxiPDFReport{
   const c=PDF_COLORS;let rowIndex=0;
   const heading=()=>{this.section(title);this.content+=pdfBox(36,this.y-27,523,27,c.navy,5);let x=36;for(const col of columns){this.content+=pdfText(col.label,col.right?x+col.width-8:x+8,this.y-17,8,true,c.white,col.width-16,col.right?'right':'left');x+=col.width;}this.y-=28;};
   this.ensure(100);heading();
-  for(const row of rows){const height=25;if(this.y-height<76){this.newPage();heading();}
+  for(const row of rows){const height=row.serviceDetail?36:25;if(this.y-height<76){this.newPage();heading();}
    this.content+=pdfBox(36,this.y-height,523,height,rowIndex%2?'#eaf0f8':c.white);
    if(row.type)this.content+=pdfBox(36,this.y-height+3,3,height-6,PDF_PLATFORM_COLORS[row.type]||c.blue,1);
-   let x=36;columns.forEach((col,i)=>{let pad=8;if(row.logo&&row.logoColumn===i){this.content+=pdfImage(row.logo,x+7,this.y-21,17,17);pad=30;}
-    this.content+=pdfText(row.cells[i]??'',col.right?x+col.width-8:x+pad,this.y-16,8.2,!!col.bold,col.color||c.ink,col.width-pad-8,col.right?'right':'left');x+=col.width;});
+   let x=36;columns.forEach((col,i)=>{let pad=8;if(row.serviceDetail&&i===1){if(row.logo)this.content+=pdfImage(row.logo,x+7,this.y-28,21,21);const methodLabel=row.paymentMethod?(METHOD_NAMES[row.paymentMethod]||row.paymentMethod):row.methodFallback;this.content+=pdfText(row.serviceName,x+34,this.y-12,8.5,true,c.ink,col.width-42);if(row.paymentMethod)this.content+=pdfPaymentIcon(row.paymentMethod,x+33,this.y-30,15);this.content+=pdfText(methodLabel,x+(row.paymentMethod?52:34),this.y-27,8,false,c.muted,col.width-(row.paymentMethod?60:42));x+=col.width;return;}if(row.logo&&row.logoColumn===i){this.content+=pdfImage(row.logo,x+7,this.y-21,17,17);pad=30;}
+    this.content+=pdfText(row.cells[i]??'',col.right?x+col.width-8:x+pad,this.y-(row.serviceDetail?22:16),8.2,!!col.bold,col.color||c.ink,col.width-pad-8,col.right?'right':'left');x+=col.width;});
    this.y-=height;rowIndex++;
   }
   if(!rows.length){this.content+=pdfBox(36,this.y-34,523,34,c.white)+pdfText('No hay registros para mostrar.',48,this.y-21,10,false,c.muted);this.y-=34;}
@@ -70,14 +87,15 @@ class TaxiPDFReport{
  finish(){return [...this.pages,this.content];}
 }
 function pdfCashStrip(report,value,label='Distribución de los cobros brutos'){
- const c=PDF_COLORS;report.ensure(85);const top=report.y,total=value.cash+value.boss+value.unclassified;
+ const c=PDF_COLORS;report.ensure(105);const top=report.y,total=value.cash+value.boss+value.unclassified;
  report.content+=pdfText(label,36,top-10,9,true,c.ink);
+ report.content+=pdfPaymentLegend(36,top-31);
  const segments=[[value.cash,c.green],[value.boss,c.blue],[value.unclassified,c.amber]];let x=36;
- report.content+=pdfBox(36,top-33,523,12,c.line,5);
- for(const [amount,color] of segments){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-33,width,12,color);x+=width;}}
- report.content+=pdfText('EFECTIVO DEL CHÓFER',36,top-51,7.5,true,c.green)+pdfText(pdfSafeMoney(value.cash),36,top-66,11,true,c.green,165);
- report.content+=pdfText('COBRADO POR EL JEFE',214,top-51,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-66,11,true,c.blue,165);
- report.content+=pdfText('SIN CLASIFICAR',392,top-51,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-66,11,true,c.amber,165);report.y-=85;
+ report.content+=pdfBox(36,top-53,523,12,c.line,5);
+ for(const [amount,color] of segments){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-53,width,12,color);x+=width;}}
+ report.content+=pdfText('EFECTIVO DEL CHÓFER',36,top-71,7.5,true,c.green)+pdfText(pdfSafeMoney(value.cash),36,top-86,11,true,c.green,165);
+ report.content+=pdfText('COBRADO POR EL JEFE',214,top-71,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-86,11,true,c.blue,165);
+ report.content+=pdfText('SIN CLASIFICAR',392,top-71,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-86,11,true,c.amber,165);report.y-=105;
 }
 function pdfPlatformChart(report,rows){
  report.section('Actividad por plataforma');const max=Math.max(1,...rows.map(r=>r.total));
@@ -122,7 +140,7 @@ function exportPDF(customFilename){
  const c=PDF_COLORS,d=new TaxiPDFReport('Facturación de la jornada',pdfSessionSubtitle(s),'DETALLE DE SERVICIOS',!!s.reportExample);
  d.cards([['Facturación bruta',pdfSafeMoney(totalCents(s)),c.blue,c.blueLight,'Importe de todos los servicios'],['Comisiones',pdfSafeMoney(totalCommission(s)),c.amber,c.amberLight,commissionsOn(s)?'Imbric 12 % - Join Up 10 %':'Descuentos desactivados'],['Total contabilizado',pdfSafeMoney(accountingTotal(s)),c.green,c.greenLight,commissionsOn(s)?'Neto después de comisiones':'Sin descuentos de comisión']]);
  const columns=[{label:'Fecha y hora',width:103},{label:'Plataforma / cobro',width:180},{label:'Bruto',width:80,right:true},{label:'Comisión',width:78,right:true,color:c.amber},{label:'Neto',width:82,right:true,bold:true,color:c.green}];
- d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
+ d.table(`${s.services.length} servicios registrados`,columns,sortServices(s).map(item=>({type:item.type,serviceDetail:true,serviceName:nameType(item.type),paymentMethod:item.paymentMethod||null,methodFallback:collectionOwner(item)==='jefe'?'Cobro del jefe':'Sin clasificar',logo:PDF_IMAGES[item.type]?item.type:null,logoColumn:1,cells:[dateText(item.at),serviceLabel(item),pdfSafeMoney(item.amountCents),commissionCents(item,s)?'- '+pdfSafeMoney(commissionCents(item,s)):'-',pdfSafeMoney(netCents(item,s))]})));
  const pages=d.finish();pages.push(...pdfCollectionsPage(s));if(type==='both')pages.push(pdfDriverPage(s));createPDFPages(pages,customFilename||fileStem(s)+'.pdf');
 }
 function pdfPeriodOverview(m){

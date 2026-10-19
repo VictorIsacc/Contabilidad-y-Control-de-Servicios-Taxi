@@ -1,6 +1,6 @@
-# Contabilidad y Control de Servicios Taxi — PWA 1.8.8
+# Contabilidad y Control de Servicios Taxi — PWA 1.9.0
 
-Aplicación para GitHub Pages, adaptada de la versión Android 1.8.7. URL de publicación estable:
+Aplicación para GitHub Pages, adaptada de la versión Android 1.9.0. URL de publicación estable:
 
 https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
 
@@ -48,10 +48,20 @@ Se conservan las cachés antiguas de nombre ambiguo porque no se puede garantiza
 
 Los datos siguen en IndexedDB `TaxiJornadaDB`, versión 1, y las preferencias en el almacenamiento local. El tema usa `taxi-theme`; los valores por defecto del conductor usan `taxi-driver-defaults-v1`. No se envían jornadas a GitHub ni a servidores.
 
-El APK, los distintos navegadores y el modo privado pueden usar almacenes independientes. Los JSON son copias externas; esta versión no tiene importación ni sincronización. No borres datos del sitio ni desinstales sin copias comprobadas.
+El APK, los distintos navegadores y el modo privado pueden usar almacenes independientes. La copia completa JSON se exporta y carga desde Instrucciones → Datos y copias JSON, compatible con Android 1.9.0. Incluye todas las jornadas, servicios, cobros, comisiones, porcentajes y seguros por jornada, valores fijados para nuevas jornadas y tema. También permite cargar los JSON anteriores de una jornada o periodo. La transferencia se realiza mediante archivos; no hay sincronización automática. No borres datos del sitio ni desinstales sin copias comprobadas.
 
 ## Publicación
 
 Los archivos de esta carpeta van en la raíz del repositorio que ya publica GitHub Pages. Actualízalos en un único commit. No subas el ZIP como sustituto de los archivos ni crees una carpeta de versión nueva dentro de la URL publicada.
 
 El APK y su clave privada no forman parte de esta PWA ni deben subirse al repositorio. El generador PDF solo usa recursos incluidos y no necesita servicios remotos.
+
+## Novedades 1.9.0
+
+- Copia completa e importación JSON con vista previa por meses y restauración opcional de ajustes generales.
+- Los registros idénticos no se duplican. Las jornadas distintas se conservan por defecto; solo se sustituyen al marcar la opción expresamente. El resto de jornadas se mantiene.
+- La validación completa y una transacción impiden cargar medias copias. No se permiten dos jornadas abiertas. Si los datos cambian desde la vista previa, hay que seleccionar de nuevo el archivo.
+- Los totales, comisiones, participación, seguro y liquidación mensual se recalculan con los registros originales. Los resúmenes incluidos en el JSON son informativos. Los cobros históricos sin modalidad siguen pendientes de clasificar.
+- Listado de servicios enmarcado, filas alternas y botones ↑ ↓ para recorrerlo, en Parciales e Historial y en ambos temas.
+- Botones de cobro con iconos: 💵 Efectivo, 💳 Tarjeta / TPV y 📱 App.
+- Archivos UTF-8 de hasta 20 MB, 10.000 jornadas y 100.000 servicios por carga. Un JSON mensual no incluye ajustes generales salvo que sea una copia completa. Las comisiones de plataforma siguen siendo Imbric 12 % y Join Up 10 %, con activación guardada por jornada.
