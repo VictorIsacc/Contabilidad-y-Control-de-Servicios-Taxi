@@ -32,7 +32,7 @@ function pdfPaymentIcon(method,x,y,size=14){
  return out+'Q\n';
 }
 function pdfPaymentLegend(x,y){
- let out='';for(const [method,label,offset] of [['efectivo','Efectivo',0],['tpv','Tarjeta / TPV',130],['app','App',300]])out+=pdfPaymentIcon(method,x+offset,y-3,17)+pdfText(label,x+offset+23,y+2,8.5,true,PDF_COLORS.muted);return out;
+ let out='';for(const [method,label,offset] of [['efectivo','Efectivo',0],['tpv','Tarjeta / TPV',82],['app','App',198]])out+=pdfPaymentIcon(method,x+offset,y-3,17)+pdfText(label,x+offset+23,y+2,8.5,true,PDF_COLORS.muted);return out;
 }
 function pdfImage(key,x,y,w,h){return `q ${w} 0 0 ${h} ${x} ${y} cm /Img_${key} Do Q\n`;}
 function pdfWrap(text,width,size=9,bold=false){
@@ -87,15 +87,15 @@ class TaxiPDFReport{
  finish(){return [...this.pages,this.content];}
 }
 function pdfCashStrip(report,value,label='Distribución de los cobros brutos'){
- const c=PDF_COLORS;report.ensure(105);const top=report.y,total=value.cash+value.boss+value.unclassified;
+ const c=PDF_COLORS;report.ensure(85);const top=report.y,total=value.cash+value.boss+value.unclassified;
  report.content+=pdfText(label,36,top-10,9,true,c.ink);
- report.content+=pdfPaymentLegend(36,top-31);
+ report.content+=pdfPaymentLegend(300,top-12);
  const segments=[[value.cash,c.green],[value.boss,c.blue],[value.unclassified,c.amber]];let x=36;
- report.content+=pdfBox(36,top-53,523,12,c.line,5);
- for(const [amount,color] of segments){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-53,width,12,color);x+=width;}}
- report.content+=pdfText('EFECTIVO DEL CHÓFER',36,top-71,7.5,true,c.green)+pdfText(pdfSafeMoney(value.cash),36,top-86,11,true,c.green,165);
- report.content+=pdfText('COBRADO POR EL JEFE',214,top-71,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-86,11,true,c.blue,165);
- report.content+=pdfText('SIN CLASIFICAR',392,top-71,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-86,11,true,c.amber,165);report.y-=105;
+ report.content+=pdfBox(36,top-33,523,12,c.line,5);
+ for(const [amount,color] of segments){const width=total?523*amount/total:0;if(width){report.content+=pdfBox(x,top-33,width,12,color);x+=width;}}
+ report.content+=pdfText('EFECTIVO DEL CHÓFER',36,top-51,7.5,true,c.green)+pdfText(pdfSafeMoney(value.cash),36,top-66,11,true,c.green,165);
+ report.content+=pdfText('COBRADO POR EL JEFE',214,top-51,7.5,true,c.blue)+pdfText(pdfSafeMoney(value.boss),214,top-66,11,true,c.blue,165);
+ report.content+=pdfText('SIN CLASIFICAR',392,top-51,7.5,true,c.amber)+pdfText(pdfSafeMoney(value.unclassified),392,top-66,11,true,c.amber,165);report.y-=85;
 }
 function pdfPlatformChart(report,rows){
  report.section('Actividad por plataforma');const max=Math.max(1,...rows.map(r=>r.total));

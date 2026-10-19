@@ -2,7 +2,7 @@ const APP='contabilidad-control-servicios-taxi';
 const VERSION='1.9.0';
 const BASE=new URL('./',self.location.href);
 const PREFIX=APP+':'+encodeURIComponent(BASE.pathname)+':';
-const CACHE=PREFIX+VERSION+':2';
+const CACHE=PREFIX+VERSION+':3';
 const ASSETS=['./','./index.html','./styles.css','./app.js','./json-transfer.js','./pdf-assets.js','./pdf-report.js','./pwa-install.js','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-maskable-512.png','./logos/pidetaxi.webp','./logos/imbric.webp','./logos/joinup.webp','./logos/abonado.webp','./logos/uber.webp','./logos/freenow.webp','./logos/concertado.webp'];
 const URLS=ASSETS.map(path=>new URL(path,BASE).href);
 self.addEventListener('install',event=>{
