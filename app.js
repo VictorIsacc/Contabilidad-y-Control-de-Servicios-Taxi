@@ -13,17 +13,34 @@ const METHOD_NAMES = {app:'App',efectivo:'Efectivo',tpv:'TPV'};
 const METHOD_UI={efectivo:'💵 Efectivo',tpv:'💳 TPV',app:'📱 App'};
 const COMMISSION_RATES = {imbric:12,joinup:10};
 const commissionsOn = session => session?.commissionEnabled === true;
-const commissionCents = (svc,session) => commissionsOn(session) && COMMISSION_RATES[svc.type] ? Math.round(svc.amountCents * COMMISSION_RATES[svc.type] / 100) : 0;
+// Uber App conserva el importe registrado. Solo efectivo/TPV nuevos descuentan el 12 %.
+const uberCommissionOn=session=>session?.uberCashTPVCommissionEnabled===true;
+const commissionRate=(svc,session)=>svc.type==='uber'&&uberCommissionOn(session)&&['efectivo','tpv'].includes(svc.paymentMethod)?12:commissionsOn(session)?(COMMISSION_RATES[svc.type]||0):0;
+const commissionCents = (svc,session) => Math.round(svc.amountCents * commissionRate(svc,session) / 100);
+const hasCommissions=session=>commissionsOn(session)||uberCommissionOn(session);
 const netCents = (svc,session) => svc.amountCents - commissionCents(svc,session);
 const totalCommission = session => session.services.reduce((n,svc)=>n+commissionCents(svc,session),0);
 const totalNet = session => totalCents(session) - totalCommission(session);
-const accountingTotal = session => commissionsOn(session) ? totalNet(session) : totalCents(session);
-const accountingValue = (svc,session) => commissionsOn(session) ? netCents(svc,session) : svc.amountCents;
+const accountingTotal = session => totalNet(session);
+const accountingValue = (svc,session) => netCents(svc,session);
 
 // Configuración por jornada. En historiales antiguos no se presuponen ganancias.
 const USAGE_MODE_KEY='taxi-usage-mode-v1';
 const isOwner=session=>session?.usageMode==='owner';
-const modeLabel=session=>isOwner(session)?'Titular / uso propio':'Chófer';
+const modeLabel=session=>isOwner(session)?'Modo titular':'Modo chófer';
+const PERSON_NAMES_KEY='taxi-person-names-v1';
+function personNames(){try{const p=JSON.parse(localStorage.getItem(PERSON_NAMES_KEY)||'{}');return {driver:typeof p?.driver==='string'?p.driver.slice(0,60):'',owner:typeof p?.owner==='string'?p.owner.slice(0,60):''};}catch(e){return {driver:'',owner:''};}}
+const personLabel=s=>modeLabel(s)+(s.personName?' · '+s.personName:'');
+function loadPersonName(){const mode=$('usageMode').value;$('personName').value=personNames()[mode]||'';$('personNameLabel').textContent=mode==='owner'?'Nombre del titular (opcional)':'Nombre del chófer (opcional)';}
+function periodPeople(sessions){return [...new Set(sessions.map(personLabel))].join(' / ');}
+function uberSummary(sessions){
+ const u={count:0,gross:0,commission:0,net:0,cash:0,tpv:0,unclassified:0,legacyCount:0};
+ for(const s of sessions)for(const v of s.services){if(v.type!=='uber')continue;u.count++;u.gross+=v.amountCents;u.commission+=commissionCents(v,s);u.net+=accountingValue(v,s);if(!uberCommissionOn(s))u.legacyCount++;if(v.paymentMethod==='efectivo')u.cash+=v.amountCents;else if(v.paymentMethod==='tpv')u.tpv+=v.amountCents;else if(v.paymentMethod!=='app')u.unclassified+=v.amountCents;}
+ u.collected=u.cash+u.tpv;u.balance=u.unclassified?null:u.net-u.collected;return u;
+}
+const uberBalanceLabel=u=>u.balance===null?'Saldo sin calcular':u.balance<0?'Saldo a favor de Uber':'Resta por abonar Uber';
+function renderUber(element,sessions){const u=uberSummary(sessions);element.hidden=!u.count;element.replaceChildren();if(!u.count)return;const h=document.createElement('h3');h.textContent='Uber · facturación y cobros';element.append(h);for(const [label,value] of [['Importes registrados Uber',u.gross],['Comisión Uber descontada',u.commission],['Facturación neta Uber',u.net],['💵 Efectivo cobrado (bruto)',u.cash],['💳 TPV cobrado (bruto)',u.tpv]])appendSummaryLine(element,label,money(value));appendSummaryLine(element,uberBalanceLabel(u),u.balance===null?'Sin clasificar':money(Math.abs(u.balance)),true);const note=document.createElement('p');note.className='hint';note.textContent='Saldo calculado = facturación neta Uber menos efectivo y TPV brutos. No descuenta transferencias de Uber ya recibidas. App conserva el importe introducido.'+(u.legacyCount?' Incluye servicios antiguos con su cálculo original.':'');element.append(note);}
+
 function preferredUsageMode(){try{return localStorage.getItem(USAGE_MODE_KEY)==='owner'?'owner':'driver';}catch(e){return 'driver';}}
 function currentUsageMode(){return active?(isOwner(active)?'owner':'driver'):preferredUsageMode();}
 const driverOn = session => !isOwner(session) && session?.driverEnabled === true && Number.isInteger(session.driverBasisPoints) && Number.isInteger(session.dailyInsuranceCents);
@@ -133,7 +150,7 @@ function markError(e){console.error(e);notify('No se pudo guardar. Revisa el alm
 function showModal(id){lastFocus=document.activeElement;$(id).hidden=false;document.body.style.overflow='hidden';$(id).querySelector('button:not(:disabled),input')?.focus();}
 function hideModal(id){$(id).hidden=true;if(['startDialog','entryDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';lastFocus?.focus();}
 function render(){
-  const on=!!active;$('usageModeBadge').textContent=active?modeLabel(active):(preferredUsageMode()==='owner'?'Titular / uso propio':'Chófer');updateRoleGuides();
+  const on=!!active;const role=active||{usageMode:preferredUsageMode(),personName:personNames()[preferredUsageMode()]};$('usageModeBadge').textContent=modeLabel(role);$('usageName').textContent=role.personName||'';updateRoleGuides();
   $('status').classList.toggle('active',on);
   $('status').innerHTML='<span class="status-dot"></span>'+(on?'Jornada en curso':'Sin jornada activa');
   $('total').textContent=money(on?accountingTotal(active):0);
@@ -150,18 +167,18 @@ function render(){
   if(on){for(const type of TYPES){const sum=active.services.filter(x=>x.type===type.id).reduce((v,x)=>v+accountingValue(x,active),0);if(!sum)continue;const div=document.createElement('div');div.className='category-total';const a=document.createElement('span');a.textContent=type.name;const b=document.createElement('strong');b.textContent=money(sum);div.append(a,b);$('categoryTotals').append(div);}}
 }
 function updateCommissionPreview(){
- const show=!!active&&commissionsOn(active)&&!!COMMISSION_RATES[selected];
+ const pct=active?commissionRate({type:selected,paymentMethod:selectedMethod},active):0;const show=!!pct;
  const preview=$('commissionPreview');preview.hidden=!show;
  if(!show)return;
  const raw=parseAmount($('amount').value);
- const pct=COMMISSION_RATES[selected];
+
  const ded=raw===null?null:Math.round(raw*pct/100);
  $('commissionDescription').textContent=`Comisión ${nameType(selected)} (${pct} %) — cálculo automático`;
  $('commissionGross').textContent=raw===null?'—':money(raw);
  $('commissionDeduction').textContent=raw===null?'—':'−'+money(ded);
  $('commissionNet').textContent=raw===null?'—':money(raw-ded);
 }
-function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=CENTRAL_TYPES.includes(type.id)?centralServiceLabel(type.id,active):type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=METHOD_UI[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}}
+function buildCategories(){for(const type of TYPES){const btn=document.createElement('button');btn.className='category';btn.type='button';btn.dataset.id=type.id;btn.setAttribute('aria-label',type.name);btn.title=type.name;btn.innerHTML=`<img class="category-logo" src="./logos/${type.id}.webp" alt="" loading="eager" decoding="async">`;btn.addEventListener('click',()=>{if(!active)return;selected=type.id;selectedMethod=null;$('entryTitle').textContent=CENTRAL_TYPES.includes(type.id)?centralServiceLabel(type.id,active):type.name;$('amount').value='';updateCommissionPreview();const methods=METHODS[type.id]||[];const picker=$('methodPicker');picker.replaceChildren();picker.hidden=!methods.length;for(const method of methods){const option=document.createElement('button');option.type='button';option.className='method-button method-'+method;option.textContent=METHOD_UI[method];option.setAttribute('aria-pressed','false');option.addEventListener('click',()=>{selectedMethod=method;picker.querySelectorAll('button').forEach(b=>{b.classList.remove('chosen');b.setAttribute('aria-pressed','false')});option.classList.add('chosen');option.setAttribute('aria-pressed','true');updateCommissionPreview();$('amount').focus();});picker.append(option);} $('amount').disabled=!!methods.length;$('saveBtn').disabled=!!methods.length;picker.querySelectorAll('button').forEach(option=>option.addEventListener('click',()=>{$('amount').disabled=false;$('saveBtn').disabled=false;}));showModal('entryDialog');if(!methods.length)$('amount').focus();});$('categoryGrid').append(btn);}const tile=document.createElement('div');tile.className='mode-tile';tile.setAttribute('role','status');tile.innerHTML='<span class="mode-person-icon" aria-hidden="true">♙</span><strong id="usageModeBadge"></strong><span id="usageName"></span>';$('categoryGrid').append(tile);}
 function parseAmount(raw){
   const cleaned=raw.trim().replace(/\s/g,'').replace(/€/g,'');
   // Accept 1.234,56, 1234.56 and 12,50, but reject ambiguous repeated separators.
@@ -193,7 +210,7 @@ async function startSession(){
   const sessions=await readAll();const existing=sessions.find(s=>!s.closedAt);
   if(existing){active=existing;render();notify('Se ha recuperado la jornada abierta');return;}
   $('centralReceivedToggle').checked=false;$('insuranceToggle').checked=true;$('driverInsurance').disabled=false;
-  loadDriverDefaults();$('usageMode').value=preferredUsageMode();$('rememberUsageMode').checked=true;updateUsageFields();
+  loadDriverDefaults();$('usageMode').value=preferredUsageMode();$('rememberUsageMode').checked=true;updateUsageFields();loadPersonName();
   showModal('startDialog');
 }
 async function confirmStartSession(e){
@@ -208,17 +225,18 @@ async function confirmStartSession(e){
    const insurance=useDriver?(parseNonnegativeCents($('driverInsurance').value)??(insuranceEnabled?null:0)):0;
    if(useDriver&&(pct===null||insurance===null)){notify('Introduce un porcentaje entre 0 y 100 y un seguro diario válido');return;}
    const now=new Date().toISOString();
-   const s={schemaVersion:6,usageMode,insuranceEnabled,centralCashByDriver:false,centralReceivedByDriver:!owner&&$('centralReceivedToggle').checked,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
-   await writeOne(s);let modeSaved=true;try{if($('rememberUsageMode').checked)localStorage.setItem(USAGE_MODE_KEY,usageMode);}catch(e){modeSaved=false;}const defaultsSaved=storeDriverDefaults(s)&&modeSaved;active=s;hideModal('startDialog');render();notify(defaultsSaved?'Jornada iniciada. Ya puedes añadir servicios.':'Jornada iniciada, pero no se pudieron fijar los valores para nuevas jornadas.');
+   const personName=$('personName').value.trim().replace(/\s+/g,' ');if(personName.length>60||/[\x00-\x1f\x7f]/.test(personName)){notify('Introduce un nombre de hasta 60 caracteres');return;}
+   const s={schemaVersion:7,personName,uberCashTPVCommissionEnabled:true,usageMode,insuranceEnabled,centralCashByDriver:false,centralReceivedByDriver:!owner&&$('centralReceivedToggle').checked,id:makeId(),startedAt:now,closedAt:null,commissionEnabled:$('commissionToggle').checked,driverEnabled:useDriver,driverBasisPoints:pct,dailyInsuranceCents:insurance,services:[]};
+   await writeOne(s);let modeSaved=true;try{localStorage.setItem(PERSON_NAMES_KEY,JSON.stringify({...personNames(),[usageMode]:personName}));if($('rememberUsageMode').checked)localStorage.setItem(USAGE_MODE_KEY,usageMode);}catch(e){modeSaved=false;}const defaultsSaved=storeDriverDefaults(s)&&modeSaved;active=s;hideModal('startDialog');render();notify(defaultsSaved?'Jornada iniciada. Ya puedes añadir servicios.':'Jornada iniciada, pero no se pudieron fijar los valores para nuevas jornadas.');
  }catch(e){markError(e);}
 
 }
 async function addService(e){e.preventDefault();if(!active||!selected)return;if(METHODS[selected]&&!selectedMethod){notify('Elige primero App, Efectivo o TPV');return;}const cents=parseAmount($('amount').value);if(cents===null){notify('Introduce un importe válido mayor que cero (máximo 2 decimales)');$('amount').focus();return;}
   $('saveBtn').disabled=true;
-  try{const latest=await readOne(active.id);if(!latest||latest.closedAt)throw Error('La jornada ya está cerrada');latest.services.push({id:makeId(),type:selected,paymentMethod:selectedMethod,amountCents:cents,at:new Date().toISOString()});await writeOne(latest);active=latest;render();hideModal('entryDialog');notify(`${serviceLabel({type:selected,paymentMethod:selectedMethod},latest)} · ${money(cents)} guardado${commissionCents({type:selected,amountCents:cents},latest)?' · neto '+money(netCents({type:selected,amountCents:cents},latest)):''}`);}catch(err){markError(err);}finally{$('saveBtn').disabled=false;}
+  try{const latest=await readOne(active.id);if(!latest||latest.closedAt)throw Error('La jornada ya está cerrada');latest.services.push({id:makeId(),type:selected,paymentMethod:selectedMethod,amountCents:cents,at:new Date().toISOString()});await writeOne(latest);active=latest;render();hideModal('entryDialog');notify(`${serviceLabel({type:selected,paymentMethod:selectedMethod},latest)} · ${money(cents)} guardado${commissionCents({type:selected,paymentMethod:selectedMethod,amountCents:cents},latest)?' · neto '+money(netCents({type:selected,paymentMethod:selectedMethod,amountCents:cents},latest)):''}`);}catch(err){markError(err);}finally{$('saveBtn').disabled=false;}
 }
 async function closeSession(){if(!active)return;
-  if(!confirm(`¿Cerrar la jornada con ${active.services.length} servicios y ${money(accountingTotal(active))} ${commissionsOn(active)?'(netos)':'(brutos)'}? Podrás consultarla en el historial, pero no añadir más servicios.`))return;
+  if(!confirm(`¿Cerrar la jornada con ${active.services.length} servicios y ${money(accountingTotal(active))} ${hasCommissions(active)?'(netos)':'(brutos)'}? Podrás consultarla en el historial, pero no añadir más servicios.`))return;
   try{const latest=await readOne(active.id);if(!latest||latest.closedAt)throw Error('La jornada ya está cerrada');latest.closedAt=new Date().toISOString();await writeOne(latest);active=null;render();showList(latest);notify('Jornada cerrada y guardada.');}catch(e){markError(e);}
 }
 function renderDriverLines(element,session){
@@ -236,15 +254,15 @@ function showList(session){
  $('listEyebrow').textContent=session.closedAt?'JORNADA CERRADA':'PARCIAL DE JORNADA';
  $('listTitle').textContent=session.closedAt?'Resumen del cierre':'Servicios registrados';
  configureReportType($('pdfType'),isOwner(session));
- $('listMeta').textContent=`${modeLabel(session)} · Inicio: ${dateText(session.startedAt)} · ${session.closedAt?'Cierre: '+dateText(session.closedAt):'En curso'} · ${session.services.length} servicios`;
+ $('listMeta').textContent=`${personLabel(session)} · Inicio: ${dateText(session.startedAt)} · ${session.closedAt?'Cierre: '+dateText(session.closedAt):'En curso'} · ${session.services.length} servicios`;
  $('listTotal').textContent=money(accountingTotal(session));
-  $('listBasis').textContent=commissionsOn(session)?'Total NETO de la jornada':'Total de la jornada';
- renderCollections($('cashSessionSummary'),session);
+  $('listBasis').textContent=hasCommissions(session)?'Total NETO de la jornada':'Total de la jornada';
+ renderCollections($('cashSessionSummary'),session);renderUber($('sessionUber'),[session]);
  $('driverSessionSummary').hidden=!driverOn(session);
  if(driverOn(session))renderDriverLines($('driverSessionSummary'),session);
- $('commissionSummary').hidden=!commissionsOn(session);
- $('commissionMode').textContent=commissionsOn(session)?'Descuentos activados al iniciar jornada':'Sin descuentos de comisión';
- if(commissionsOn(session)){
+ $('commissionSummary').hidden=!hasCommissions(session);
+ $('commissionMode').textContent=hasCommissions(session)?'Comisiones según la configuración guardada de esta jornada'+(uberCommissionOn(session)?' · Uber efectivo y TPV: 12 % automático':''):'Sin descuentos de comisión';
+ if(hasCommissions(session)){
    $('listCommission').textContent='−'+money(totalCommission(session));
    $('listNet').textContent=money(totalCents(session));
  }
@@ -261,7 +279,7 @@ function showList(session){
    const label=document.createElement('span');label.className='service-name';label.textContent=CENTRAL_TYPES.includes(svc.type)?centralServiceLabel(svc.type,session):nameType(svc.type)+(svc.paymentMethod?' · '+(METHOD_UI[svc.paymentMethod]||svc.paymentMethod):'');
    const amount=document.createElement('span');amount.className='service-amount';
    const comm=commissionCents(svc,session);
-   if(commissionsOn(session)&&COMMISSION_RATES[svc.type]){amount.innerHTML=`<span class="amount-gross">Bruto ${money(svc.amountCents)}</span><span class="amount-commission">Comisión −${money(comm)}</span><span class="amount-net">Neto ${money(netCents(svc,session))}</span>`;}
+   if(commissionRate(svc,session)){amount.innerHTML=`<span class="amount-gross">Bruto ${money(svc.amountCents)}</span><span class="amount-commission">Comisión −${money(comm)}</span><span class="amount-net">Neto ${money(netCents(svc,session))}</span>`;}
    else amount.textContent=money(svc.amountCents);
    row.append(time,label,amount);
    if(!session.closedAt){
@@ -307,9 +325,9 @@ async function showHistory(){try{
  for(const s of all){
   const row=document.createElement('div');row.className='history-item';
   const info=document.createElement('div');
-  const top=document.createElement('div');top.className='hint';top.textContent=dateText(s.startedAt)+' · '+modeLabel(s);
+  const top=document.createElement('div');top.className='hint';top.textContent=dateText(s.startedAt)+' · '+personLabel(s);
   const sum=document.createElement('strong');sum.textContent=money(accountingTotal(s));
-  const foot=document.createElement('p');foot.className='hint';foot.textContent=`${s.services.length} servicios · ${commissionsOn(s)?'Total neto':'Total bruto'} · Cierre ${dateText(s.closedAt)}`;
+  const foot=document.createElement('p');foot.className='hint';foot.textContent=`${s.services.length} servicios · ${hasCommissions(s)?'Total neto':'Total bruto'} · Cierre ${dateText(s.closedAt)}`;
   if(driverOn(s))foot.textContent+=` · Ganancia chófer ${money(driverEarnings(s))} · ${settlementText(settlement(s))}`;
   info.append(top,sum,foot);
   const actions=document.createElement('div');actions.className='history-actions';
@@ -337,7 +355,7 @@ function download(blob,filename){
 function fileStem(s){const d=new Date(s.startedAt);const part=n=>String(n).padStart(2,'0');return `contabilidad-control-servicios-taxi-${d.getFullYear()}-${part(d.getMonth()+1)}-${part(d.getDate())}-${part(d.getHours())}${part(d.getMinutes())}`;}
 function exportJSON(){
  if(!listSession)return;const s=listSession;
- const json={app:'Contabilidad y Control de Servicios Taxi',version:10,usageMode:isOwner(s)?'owner':'driver',id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:commissionsOn(s)?'neto':'bruto',cobros:paymentBreakdown(s),serviciosPorModalidad:paymentCounts(s),...(isOwner(s)?{resultadoTitularCentimos:accountingTotal(s)}:{insuranceEnabled:s.insuranceEnabled!==false,centralReceivedByDriver:centralReceived(s),centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null}}),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionsOn(s)?(COMMISSION_RATES[x.type]||0):0,comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};
+ const json={app:'Contabilidad y Control de Servicios Taxi',version:11,usageMode:isOwner(s)?'owner':'driver',personName:s.personName||'',uberCashTPVCommissionEnabled:uberCommissionOn(s),uber:uberSummary([s]),id:s.id,inicio:s.startedAt,cierre:s.closedAt,comisiones:{activadas:commissionsOn(s),imbricPorcentaje:12,joinUpPorcentaje:10},totalBrutoCentimos:totalCents(s),totalComisionCentimos:totalCommission(s),totalNetoCentimos:totalNet(s),totalContabilizadoCentimos:accountingTotal(s),criterioTotal:hasCommissions(s)?'neto':'bruto',cobros:paymentBreakdown(s),serviciosPorModalidad:paymentCounts(s),...(isOwner(s)?{resultadoTitularCentimos:accountingTotal(s)}:{insuranceEnabled:s.insuranceEnabled!==false,centralReceivedByDriver:centralReceived(s),centralCashByDriver:centralCash(s),liquidacion:settlementJSON(settlement(s)),conductor:{activado:driverOn(s),porcentaje:driverOn(s)?s.driverBasisPoints/100:null,seguroDiarioCentimos:driverOn(s)?s.dailyInsuranceCents:null,seguroAplicadoCentimos:driverOn(s)?driverInsurance(s):null,participacionCentimos:driverOn(s)?driverShare(s):null,gananciaCentimos:driverOn(s)?driverEarnings(s):null}}),servicios:sortServices(s).map(x=>({id:x.id,etiqueta:serviceLabel(x,s),tipo:x.type,modalidadCobro:x.paymentMethod||null,cobradoPor:collectionOwner(x,s),cobroAplicado:effectiveMethod(x,s)||(CENTRAL_TYPES.includes(x.type)?'central':null),fechaHora:x.at,importeBrutoCentimos:x.amountCents,comisionPorcentaje:commissionRate(x,s),comisionCentimos:commissionCents(x,s),importeNetoCentimos:netCents(x,s),...(x.editedAt?{corregidoEn:x.editedAt}:{})}))};
  download(new Blob([JSON.stringify(json,null,2)],{type:'application/json;charset=utf-8'}),fileStem(s)+'.json');notify('JSON preparado para descargar');
 }
 // Los informes PDF se generan localmente en pdf-report.js.
@@ -352,7 +370,7 @@ function monthAccounting(sessions){
   const gross=sumBy(sessions,totalCents),commission=sumBy(sessions,totalCommission),total=sumBy(sessions,accountingTotal),count=sumBy(sessions,s=>s.services.length);
   const driverSessions=sessions.filter(driverOn),driverParticipation=sumBy(driverSessions,driverShare),insurance=sumBy(driverSessions,driverInsurance),driverTotal=sumBy(driverSessions,driverEarnings),insuranceDays=driverSessions.filter(s=>driverInsurance(s)>0).length;
   const ownerSessions=sessions.filter(isOwner),ownerTotal=sumBy(ownerSessions,accountingTotal),ownerOnly=sessions.length>0&&ownerSessions.length===sessions.length;
-  return {ownerSessions,ownerTotal,ownerOnly,paymentCounts:sumPaymentCounts(sessions),payments:sumPayments(sessions),sessions,rows:rows.filter(r=>r.count),gross,commission,total,count,driverSessions,driverParticipation,insurance,insuranceDays,driverTotal,averageService:count?Math.round(total/count):0,averageSession:sessions.length?Math.round(total/sessions.length):0};
+  return {people:periodPeople(sessions),uber:uberSummary(sessions),ownerSessions,ownerTotal,ownerOnly,paymentCounts:sumPaymentCounts(sessions),payments:sumPayments(sessions),sessions,rows:rows.filter(r=>r.count),gross,commission,total,count,driverSessions,driverParticipation,insurance,insuranceDays,driverTotal,averageService:count?Math.round(total/count):0,averageSession:sessions.length?Math.round(total/sessions.length):0};
 }
 function periodSettlement(sessions){
   const configuredSessions=sessions.filter(driverOn),values=configuredSessions.map(settlement);
@@ -370,7 +388,7 @@ function resetMonthDates(){
 }
 function exportPeriodJSON(){
  const m=monthSnapshot;if(!m||!m.sessions.length)return;
- const payload={app:'Contabilidad y Control de Servicios Taxi',version:10,filtroModo:$('monthModeFilter').value,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:m.payments,serviciosPorModalidad:m.paymentCounts,...(m.ownerSessions.length?{jornadasTitular:m.ownerSessions.length,resultadoTitularCentimos:m.ownerTotal}:{}),...(m.driverSessions.length?{seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length}}:{}),jornadas:m.sessions.map(s=>isOwner(s)?{...s,serviciosPorModalidad:paymentCounts(s),resultadoTitularCentimos:accountingTotal(s)}:{...s,serviciosPorModalidad:paymentCounts(s),liquidacion:settlementJSON(settlement(s))})};
+ const payload={app:'Contabilidad y Control de Servicios Taxi',version:11,filtroModo:$('monthModeFilter').value,personas:m.people,uber:m.uber,desde:m.from,hasta:m.to,criterioFechas:'Fecha local de inicio de cada jornada',totalBrutoCentimos:m.gross,totalComisionCentimos:m.commission,totalContabilizadoCentimos:m.total,cobros:m.payments,serviciosPorModalidad:m.paymentCounts,...(m.ownerSessions.length?{jornadasTitular:m.ownerSessions.length,resultadoTitularCentimos:m.ownerTotal}:{}),...(m.driverSessions.length?{seguroDescontadoCentimos:m.insurance,jornadasConSeguro:m.insuranceDays,gananciaConductorCentimos:m.driverTotal,liquidacion:{...settlementJSON(m.settlement),jornadasConPorcentaje:m.driverSessions.length}}:{}),jornadas:m.sessions.map(s=>isOwner(s)?{...s,serviciosPorModalidad:paymentCounts(s),resultadoTitularCentimos:accountingTotal(s)}:{...s,serviciosPorModalidad:paymentCounts(s),liquidacion:settlementJSON(settlement(s))})};
  download(new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'}),`contabilidad-taxi-periodo-${m.from}_${m.to}.json`);notify('JSON del periodo preparado para descargar');
 }
 function td(text){const cell=document.createElement('td');cell.textContent=text;return cell;}
@@ -389,7 +407,7 @@ async function refreshMonth(){
   $('monthlyEmpty').textContent='No hay jornadas registradas en este periodo.';
   $('monthlyEmpty').hidden=!!sessions.length;$('monthlyContent').hidden=!sessions.length;$('monthPdfBtn').disabled=!sessions.length;
   if(!sessions.length)return;
-  const m=monthSnapshot;configureReportType($('monthPdfType'),m.ownerOnly);$('monthlyTitle').textContent=m.ownerOnly?'Resumen del titular por fechas':'Mes y resumen por fechas';$('monthInsurance').closest('.month-stat').hidden=m.ownerOnly;$('monthDriverHeader').hidden=m.ownerOnly;
+  const m=monthSnapshot;$('monthPeople').textContent=m.people;renderUber($('monthUber'),m.sessions);configureReportType($('monthPdfType'),m.ownerOnly);$('monthlyTitle').textContent=m.ownerOnly?'Resumen del titular por fechas':'Mes y resumen por fechas';$('monthInsurance').closest('.month-stat').hidden=m.ownerOnly;$('monthDriverHeader').hidden=m.ownerOnly;
   $('monthOwner').hidden=!m.ownerSessions.length;if(m.ownerSessions.length){const owner=$('monthOwner');owner.replaceChildren();const title=document.createElement('h3');title.textContent='Facturación propia · Titular';owner.append(title);appendSummaryLine(owner,'Total propio, sin reparto',money(m.ownerTotal),true);const note=document.createElement('p');note.className='hint';note.textContent=m.ownerSessions.length+(m.ownerSessions.length===1?' jornada':' jornadas')+' de titular. Total después de las comisiones activadas.';owner.append(note);}
   $('monthTotal').textContent=money(m.total);$('monthServices').textContent=String(m.count);
   $('monthMeanService').textContent=money(m.averageService);$('monthSessions').textContent=String(sessions.length);
@@ -405,7 +423,7 @@ async function refreshMonth(){
   $('monthlyDays').replaceChildren();$('monthlyPlatforms').replaceChildren();
   for(const s of sessions){
     const tr=document.createElement('tr');
-    [dateText(s.startedAt)+' · '+modeLabel(s)+(s.closedAt?'':' · abierta'),s.services.length+' servicios · '+countsText(s),money(accountingTotal(s)),moneyOrDash(s)].forEach((t,i)=>{const cell=td(t);if(i===3)cell.hidden=m.ownerOnly;tr.append(cell);});
+    [dateText(s.startedAt)+' · '+personLabel(s)+(s.closedAt?'':' · abierta'),s.services.length+' servicios · '+countsText(s),money(accountingTotal(s)),moneyOrDash(s)].forEach((t,i)=>{const cell=td(t);if(i===3)cell.hidden=m.ownerOnly;tr.append(cell);});
     const actionCell=document.createElement('td');actionCell.className='monthly-actions';
     if(s.closedAt){
       const remove=document.createElement('button');remove.type='button';remove.className='danger-action';remove.textContent='Eliminar';remove.setAttribute('aria-label','Eliminar jornada del '+dateText(s.startedAt));remove.addEventListener('click',()=>deleteSession(s.id,'monthly'));actionCell.append(remove);
@@ -453,7 +471,7 @@ function attach(){
   $('entryForm').addEventListener('submit',addService);
   $('partialsBtn').addEventListener('click',async()=>{try{const s=await readOne(active.id);active=s;render();showList(s);}catch(e){markError(e);}});
   $('historyBtn').addEventListener('click',()=>{$('historyModeFilter').value=currentUsageMode();showHistory();});
-  $('historyModeFilter').addEventListener('change',showHistory);$('monthModeFilter').addEventListener('change',()=>refreshMonth().catch(markError));$('usageMode').addEventListener('change',updateUsageFields);
+  $('historyModeFilter').addEventListener('change',showHistory);$('monthModeFilter').addEventListener('change',()=>refreshMonth().catch(markError));$('usageMode').addEventListener('change',()=>{updateUsageFields();loadPersonName();});
   $('monthlyBtn').addEventListener('click',showMonthly);
   $('instructionsBtn').addEventListener('click',()=>showModal('instructionsDialog'));
   $('monthPicker').addEventListener('change',()=>{resetMonthDates();refreshMonth().catch(markError);});

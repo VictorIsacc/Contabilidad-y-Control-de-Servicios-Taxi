@@ -1,51 +1,65 @@
-# Contabilidad y Control de Servicios Taxi · PWA 1.11.1
+# Taxi 1.12.0
 
-Publicación estable: https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
+## Actualización
 
-## Modos de uso
+Instala **ControlServiciosTaxi-1.12.0-Android.apk** sobre la aplicación anterior, sin desinstalar. Se conservan el paquete es.controlservicios.taxi, la firma y el origen del almacenamiento. Antes de actualizar, exporta una copia JSON completa.
 
-Al iniciar una jornada se elige **Titular / uso propio** o **Chófer**. «Recordar como modo habitual» guarda la preferencia. Desmárcalo para cambiar solo la jornada actual. Cambiar de modo no modifica las anteriores.
+La PWA se publica en https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
 
-Titular conserva la facturación íntegra después de las comisiones activadas. No muestra ni aplica reparto, seguro del conductor o liquidación con el jefe. Se distinguen efectivo, App, TPV y cobro en central. Los PDF del titular omiten los apartados del conductor.
+En Instrucciones → Instalación y actualizaciones, busca y aplica la actualización. Comprueba que muestra 1.12.0. No es necesario desinstalar.
 
-Chófer conserva el porcentaje fijado, el seguro diario opcional y la liquidación. El mismo porcentaje se aplica a todos los servicios de cada jornada. Las ganancias, el efectivo y la diferencia a entregar o recibir se consultan en Parciales y cierres.
+## Uber: total neto y cobro bruto
 
-En las nuevas jornadas, **Abonado, Imbric y Join Up siempre son cobro en central**. Se ha retirado la opción anterior de cobrarlos en efectivo. Los registros antiguos se conservan tal como se guardaron; no se recalculan cambiando sus modalidades históricas.
+En **nuevas jornadas de 1.12.0**, los servicios Uber de Efectivo y TPV se introducen en bruto y descuentan automáticamente el **12 %**, redondeado al céntimo en cada servicio. Este descuento se aplica aunque no actives el ajuste de Imbric y Join Up.
 
-## Resúmenes y recuentos
+- Uber Efectivo de 100 €: comisión 12 €, total neto 88 €, efectivo del chófer 100 €.
+- Uber TPV de 50 €: comisión 6 €, total neto 44 €, cobro TPV 50 €.
+- Uber App: conserva el importe y el cálculo de las versiones anteriores. No se aplica otro 12 % a ese importe.
 
-El resumen de cada jornada muestra el número de servicios y el importe de efectivo, TPV, App y abonados/central. Los cuatro grupos no se duplican. Si un registro antiguo no tiene modalidad, se informa como sin clasificar. El mes muestra el desglose por jornada; los PDF incluyen los recuentos de cada día.
+El reparto del conductor usa el neto total y el porcentaje de la jornada. El dinero recibido usa el efectivo bruto y los abonados netos recibidos por él, cuando se ha marcado esa opción. TPV y App no se añaden al efectivo del chófer.
 
-Los filtros de Historial y Mes permiten ver Titular, Chófer o Todas. Por defecto se utiliza el modo activo o habitual. En «Todas», la facturación del titular y la ganancia del conductor se presentan por separado. El seguro mensual solo suma las jornadas de conductor donde se descontó.
+La vista previa, el detalle, los parciales, los cierres, los meses, los PDF y JSON siguen el mismo cálculo.
 
-Las comisiones conservan Imbric 12 % y Join Up 10 % cuando se activan al iniciar la jornada. App y TPV se distinguen del efectivo; el cobro en central se muestra separado. Se conservan los siete logos, el taxi blanco y ambos temas.
+**Las jornadas antiguas, incluida una que ya estuviera abierta, conservan sus cálculos originales.** No se aplica el 12 % de forma retroactiva, para no alterar liquidaciones guardadas. Cierra la jornada anterior y empieza otra para utilizar la configuración nueva. Los resúmenes avisan si incluyen servicios Uber antiguos.
 
-## Copias e intercambio
+## Desglose Uber por jornada, mes o fechas
 
-Instrucciones → Datos y copias JSON permite exportar y cargar copias completas: jornadas, servicios, cobros, comisiones, modo de cada jornada, porcentaje y seguro, ajustes fijados, tema y modo habitual. También se pueden cargar JSON anteriores de jornada o periodo.
+Se muestran importes registrados, comisión descontada, facturación neta, efectivo bruto, TPV bruto y saldo calculado:
 
-Formato JSON 10, esquema de jornada 6. Actualiza tanto PWA como APK a **1.11.1** para intercambiar las nuevas copias. Se preservan los registros históricos con modalidad anterior al nuevo esquema. Las jornadas idénticas no se duplican y las diferentes solo se sustituyen con elección expresa. La importación se valida completa y se escribe en una transacción; también se restauran los ajustes si falla la escritura.
+**Saldo Uber = neto Uber del periodo − efectivo Uber bruto − TPV Uber bruto.**
 
-Límites: UTF-8, 20 MB, 10.000 jornadas y 100.000 servicios por archivo. Las copias se transfieren manualmente, sin sincronización automática. Antes de sustituir datos, exporta una copia de los actuales.
+Ejemplo: efectivo 100 €, TPV 50 € y App 200 € → neto 332 € → cobrado fuera de App 150 € → resta por abonar Uber 182 €.
 
-## Instalación y actualización
+Si el saldo es negativo aparece **Saldo a favor de Uber**. No se descuenta ninguna transferencia de Uber ya recibida: es una conciliación de los servicios registrados, no un control de transferencias bancarias. Los cobros antiguos sin modalidad dejan ese saldo sin calcular.
 
-En Chrome o Edge de Android, abre la publicación HTTPS y utiliza la instalación oficial del navegador o Instrucciones → Instalación y actualizaciones. Para actualizar, busca y aplica la actualización sin desinstalar ni borrar datos.
+## Nombre y modo
 
-La identidad se mantiene estable:
+Al iniciar la jornada puedes indicar un nombre opcional de hasta 60 caracteres. Se recuerda por separado para Chófer y Titular. Cambiar de modo recupera el nombre de ese modo. El nombre se guarda cuando comienzas, no al cancelar.
 
-- id: https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/contabilidad-control-servicios-taxi
-- start_url: https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/index.html
-- scope: https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
+La octava casilla junto a los siete logos muestra **Modo chófer** o **Modo titular** y el nombre. Es informativa, sin acción. El nombre de cada jornada aparece en parciales, cierres, historial, resumen mensual, PDF y JSON. Cambiar el nombre para una nueva jornada no modifica las anteriores.
 
-No uses identificadores genéricos ni cambies la ruta. El trabajador sin conexión se limita a esta carpeta. Las cachés tienen prefijo propio por aplicación y ruta; solo se borran sus versiones anteriores. IndexedDB sigue siendo TaxiJornadaDB, versión 1, almacén sessions. Preferencias locales: taxi-theme, taxi-driver-defaults-v1 y taxi-usage-mode-v1.
+Titular mantiene la facturación íntegra, descontando las comisiones que correspondan, sin reparto ni seguro del conductor. Chófer mantiene su porcentaje, seguro diario opcional y liquidación. Se puede recordar el modo habitual y cambiarlo por jornada. El mismo porcentaje se aplica a todos sus servicios.
 
-Los recursos, PDF y JSON funcionan sin conexión después de la primera carga completa. No se envían jornadas a GitHub. Para publicar el ZIP, extrae los archivos en la raíz del mismo repositorio, sin una carpeta de versión adicional. No subas la APK ni la clave privada al repositorio de la PWA.
+Abonado, Imbric y Join Up siguen siendo **cobro en central**, y se cuentan por separado de Efectivo, TPV y App. En modo Chófer, «Los abonados los cobra el chófer» incluye sus importes netos recibidos en su liquidación; no cambia su modalidad ni duplica el recuento. Las comisiones de Imbric 12 % y Join Up 10 % siguen dependiendo de su ajuste al inicio.
 
-## Opción recuperada: abonados recibidos por el chófer
+## Pantalla completa Android
 
-«Los abonados los cobra el chófer» se configura al iniciar cada jornada de modo Chófer y afecta a Abonado, Imbric y Join Up. La modalidad sigue siendo central: no aumenta el efectivo ni duplica los recuentos. Indica que el chófer ya recibió esos importes.
+La APK oculta las barras del sistema. Desliza desde el borde inferior para mostrarlas temporalmente y acceder a los controles o gestos de Android. No se bloquea el cambio de aplicación. Se respeta el recorte de cámara y el teclado.
 
-Se suma al dinero recibido el neto calculado por la vista previa, después de las comisiones activadas. La comisión no se resta de nuevo. Si no se activan comisiones, se usa el importe introducido. La liquidación compara la ganancia según el porcentaje y seguro de la jornada con efectivo más abonados netos recibidos. Sin marcar la casilla se mantiene el cálculo anterior.
+Implementación basada en el [modo inmersivo de Android](https://developer.android.com/develop/ui/views/layout/immersive), con barras transitorias al deslizar. Puede variar el gesto concreto según el teléfono y su configuración de navegación. La compilación y el análisis Android han pasado; queda por comprobar físicamente en el móvil el gesto, el teclado y el selector nativo de archivos.
 
-El ajuste queda en cada jornada, PDF, resumen mensual y copia JSON (`centralReceivedByDriver`). Está desactivado por defecto para nuevas jornadas y no se aplica en Titular. Las jornadas históricas no se modifican. Actualiza PWA y APK a 1.11.1 para intercambiar formato 10; se siguen admitiendo las copias anteriores.
+## Copias JSON compatibles
+
+Actualiza **ambas versiones a 1.12.0** para intercambiar las copias nuevas (formato 11). Instrucciones → Datos y copias JSON permite exportar y cargar todos los datos: jornadas, servicios, nombres, comisiones, modalidades, porcentajes, seguro, modo y preferencias fijadas. Se incluyen resúmenes mensuales y saldos Uber recalculables. Las copias anteriores siguen admitiéndose conservando sus cálculos.
+
+Revisa la vista previa antes de cargar. Por defecto se conservan las jornadas diferentes ya existentes; solo se sustituyen si lo marcas expresamente. Los nombres habituales se restauran junto con los ajustes generales si dejas esa opción activada. No hay sincronización automática. Se admiten JSON UTF-8 de hasta 20 MB, 10.000 jornadas y 100.000 servicios.
+
+## Archivos e instalación PWA
+
+El ZIP PWA contiene los archivos para la raíz del mismo repositorio. Extrae el ZIP y sube su contenido, sin una carpeta adicional de versión. El proyecto Android se entrega en otro ZIP. La clave privada de firma entregada anteriormente sigue siendo la misma y no debe subirse a GitHub.
+
+La PWA conserva el identificador explícito estable /Contabilidad-y-Control-de-Servicios-Taxi/contabilidad-control-servicios-taxi, el inicio en su index.html y el alcance limitado a /Contabilidad-y-Control-de-Servicios-Taxi/. Su trabajador sin conexión y sus cachés están limitados a esa aplicación y ruta. La limpieza conserva las cachés de las demás aplicaciones. Se mantienen los siete logos, el icono del taxi, ambos temas y el almacenamiento local.
+
+## Verificación
+
+Se han comprobado 72 combinaciones de Uber por importe, modalidad, modo y ajuste de comisiones; redondeos; cobros brutos; total neto; saldo Uber negativo; liquidación del chófer; modo Titular; recepción neta de abonados; nombres por jornada; intercambio JSON PWA → Android → PWA; copias antiguas y rechazo de datos inválidos. También se ha probado actualizar desde la PWA 1.8.5 conservando jornadas, temas y cachés de otras apps, guardar y exportar sin conexión y reiniciar el navegador sin red. Los informes de ejemplo están marcados como datos de ejemplo y se han revisado visualmente.
