@@ -1,16 +1,16 @@
-# Taxi 1.12.0
+# Taxi 1.12.1
 
 ## Actualización
 
-Instala **ControlServiciosTaxi-1.12.0-Android.apk** sobre la aplicación anterior, sin desinstalar. Se conservan el paquete es.controlservicios.taxi, la firma y el origen del almacenamiento. Antes de actualizar, exporta una copia JSON completa.
+Instala **ControlServiciosTaxi-1.12.1-Android.apk** sobre la aplicación anterior, sin desinstalar. Se conservan el paquete es.controlservicios.taxi, la firma y el origen del almacenamiento. Antes de actualizar, exporta una copia JSON completa.
 
 La PWA se publica en https://victorisacc.github.io/Contabilidad-y-Control-de-Servicios-Taxi/
 
-En Instrucciones → Instalación y actualizaciones, busca y aplica la actualización. Comprueba que muestra 1.12.0. No es necesario desinstalar.
+En Instrucciones → Instalación y actualizaciones, busca y aplica la actualización. Comprueba que muestra 1.12.1. No es necesario desinstalar.
 
 ## Uber: total neto y cobro bruto
 
-En **nuevas jornadas de 1.12.0**, los servicios Uber de Efectivo y TPV se introducen en bruto y descuentan automáticamente el **12 %**, redondeado al céntimo en cada servicio. Este descuento se aplica aunque no actives el ajuste de Imbric y Join Up.
+En **nuevas jornadas de 1.12.1**, los servicios Uber de Efectivo y TPV se introducen en bruto y descuentan automáticamente el **12 %**, redondeado al céntimo en cada servicio. Este descuento se aplica aunque no actives el ajuste de Imbric y Join Up.
 
 - Uber Efectivo de 100 €: comisión 12 €, total neto 88 €, efectivo del chófer 100 €.
 - Uber TPV de 50 €: comisión 6 €, total neto 44 €, cobro TPV 50 €.
@@ -50,7 +50,7 @@ Implementación basada en el [modo inmersivo de Android](https://developer.andro
 
 ## Copias JSON compatibles
 
-Actualiza **ambas versiones a 1.12.0** para intercambiar las copias nuevas (formato 11). Instrucciones → Datos y copias JSON permite exportar y cargar todos los datos: jornadas, servicios, nombres, comisiones, modalidades, porcentajes, seguro, modo y preferencias fijadas. Se incluyen resúmenes mensuales y saldos Uber recalculables. Las copias anteriores siguen admitiéndose conservando sus cálculos.
+Actualiza **ambas versiones a 1.12.1** para intercambiar las copias nuevas (formato 11). Instrucciones → Datos y copias JSON permite exportar y cargar todos los datos: jornadas, servicios, nombres, comisiones, modalidades, porcentajes, seguro, modo y preferencias fijadas. Se incluyen resúmenes mensuales y saldos Uber recalculables. Las copias anteriores siguen admitiéndose conservando sus cálculos.
 
 Revisa la vista previa antes de cargar. Por defecto se conservan las jornadas diferentes ya existentes; solo se sustituyen si lo marcas expresamente. Los nombres habituales se restauran junto con los ajustes generales si dejas esa opción activada. No hay sincronización automática. Se admiten JSON UTF-8 de hasta 20 MB, 10.000 jornadas y 100.000 servicios.
 
@@ -63,3 +63,9 @@ La PWA conserva el identificador explícito estable /Contabilidad-y-Control-de-S
 ## Verificación
 
 Se han comprobado 72 combinaciones de Uber por importe, modalidad, modo y ajuste de comisiones; redondeos; cobros brutos; total neto; saldo Uber negativo; liquidación del chófer; modo Titular; recepción neta de abonados; nombres por jornada; intercambio JSON PWA → Android → PWA; copias antiguas y rechazo de datos inválidos. También se ha probado actualizar desde la PWA 1.8.5 conservando jornadas, temas y cachés de otras apps, guardar y exportar sin conexión y reiniciar el navegador sin red. Los informes de ejemplo están marcados como datos de ejemplo y se han revisado visualmente.
+
+## Editar un servicio
+
+En Parciales, pulsa el lápiz de la fila. Puedes cambiar la plataforma, la modalidad de cobro y el importe bruto. Se muestra la comisión y el neto antes de guardar. Abonado, Imbric y Join Up se consideran cobro en central. Si cambias a una plataforma que no admite la modalidad anterior, elige una modalidad válida.
+
+Guardar cambios conserva el identificador y la fecha/hora originales, marca la corrección y recalcula importes, cobros, recuentos, comisiones, reparto y saldo Uber. Cancelar no modifica los datos. La edición sigue disponible en la jornada abierta; los cierres conservan su bloqueo. El formato JSON sigue siendo 11, compatible con 1.12.0.

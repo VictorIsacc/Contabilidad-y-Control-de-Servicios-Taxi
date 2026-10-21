@@ -76,7 +76,7 @@
  }
  async function exportFull(){
   try{if(!db)fail('Espera a que se abra el almacenamiento.');const sessions=await readAll();const conductor=preferences({conductor:JSON.parse(localStorage.getItem(DRIVER_DEFAULTS_KEY)||'null')}).conductor;
-   const copy={app:APP,version:11,appVersion:'1.12.0',tipo:'copia-completa',exportadoEn:new Date().toISOString(),comisionesPlataformas:{imbric:12,joinup:10},preferencias:{conductor,nombres:personNames(),modoUso:preferredUsageMode(),tema:localStorage.getItem('taxi-theme')},jornadas:sessions,resumenesMensuales:monthly(sessions),criterio:'Los resúmenes se recalculan de las jornadas, servicios y ajustes originales. Mes según la fecha local de inicio de cada jornada.'};
+   const copy={app:APP,version:11,appVersion:'1.12.1',tipo:'copia-completa',exportadoEn:new Date().toISOString(),comisionesPlataformas:{imbric:12,joinup:10},preferencias:{conductor,nombres:personNames(),modoUso:preferredUsageMode(),tema:localStorage.getItem('taxi-theme')},jornadas:sessions,resumenesMensuales:monthly(sessions),criterio:'Los resúmenes se recalculan de las jornadas, servicios y ajustes originales. Mes según la fecha local de inicio de cada jornada.'};
    const json=JSON.stringify(copy,null,2);if(new TextEncoder().encode(json).length>LIMIT)fail('La copia supera 20 MB. Exporta los meses por separado desde Resumen mensual.');
    download(new Blob([json],{type:'application/json;charset=utf-8'}),'Taxi-copia-completa-'+downloadTimestamp()+'.json');notify('Copia completa preparada. Comprueba que se ha guardado.');
   }catch(e){$('transferStatus').textContent='No se pudo crear la copia: '+e.message;notify('No se pudo crear la copia completa.');}

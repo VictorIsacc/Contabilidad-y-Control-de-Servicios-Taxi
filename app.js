@@ -121,6 +121,7 @@ const totalCents = s => s.services.reduce((sum,item)=>sum+item.amountCents,0);
 const nameType = id => TYPES.find(t=>t.id===id)?.name || id;
 const sortServices = s => [...s.services].sort((a,b)=>a.at.localeCompare(b.at)||a.id.localeCompare(b.id));
 const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+let editTarget=null,editBusy=false;
 let db, active=null, selected=null, selectedMethod=null, listSession=null, lastFocus=null, toastTimer;
 
 async function openDB(){
@@ -148,7 +149,7 @@ function deleteOne(id){return transact('readwrite',store=>store.delete(id));}
 function notify(msg){clearTimeout(toastTimer);$('toast').textContent=msg;$('toast').classList.add('show');toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3500);}
 function markError(e){console.error(e);notify('No se pudo guardar. Revisa el almacenamiento del navegador.');}
 function showModal(id){lastFocus=document.activeElement;$(id).hidden=false;document.body.style.overflow='hidden';$(id).querySelector('button:not(:disabled),input')?.focus();}
-function hideModal(id){$(id).hidden=true;if(['startDialog','entryDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';lastFocus?.focus();}
+function hideModal(id){$(id).hidden=true;if(['startDialog','entryDialog','editDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';lastFocus?.focus();}
 function render(){
   const on=!!active;const role=active||{usageMode:preferredUsageMode(),personName:personNames()[preferredUsageMode()]};$('usageModeBadge').textContent=modeLabel(role);$('usageName').textContent=role.personName||'';updateRoleGuides();
   $('status').classList.toggle('active',on);
@@ -283,7 +284,7 @@ function showList(session){
    else amount.textContent=money(svc.amountCents);
    row.append(time,label,amount);
    if(!session.closedAt){
-     const edit=document.createElement('button');edit.type='button';edit.className='small-action';edit.textContent='✎';edit.title='Corregir importe bruto';edit.setAttribute('aria-label','Corregir importe de '+serviceLabel(svc,session));edit.addEventListener('click',()=>updateService(session.id,svc.id,'edit'));
+     const edit=document.createElement('button');edit.type='button';edit.className='small-action';edit.textContent='✎';edit.title='Editar plataforma, cobro e importe';edit.setAttribute('aria-label','Editar servicio de '+serviceLabel(svc,session));edit.addEventListener('click',()=>updateService(session.id,svc.id,'edit'));
      const del=document.createElement('button');del.type='button';del.className='small-action';del.textContent='✕';del.title='Eliminar servicio';del.setAttribute('aria-label','Eliminar importe de '+serviceLabel(svc,session));del.addEventListener('click',()=>updateService(session.id,svc.id,'delete'));row.append(edit,del);
    }
    div.append(row);
@@ -291,15 +292,51 @@ function showList(session){
  hideModal('historyDialog');showModal('listDialog');
 }
 
+// El editor conserva la identidad y fecha del servicio y revalida antes de guardar.
+const serviceFingerprint=svc=>JSON.stringify([svc.id,svc.type,svc.paymentMethod??null,svc.amountCents,svc.at,svc.editedAt??null]);
+function editMethodOptions(previous=null){
+ const type=$('editPlatform').value,methods=METHODS[type]||[],select=$('editMethod');select.replaceChildren();
+ $('editMethodRow').hidden=!methods.length;select.required=!!methods.length;select.disabled=!methods.length;
+ if(methods.length){const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Selecciona el cobro';select.append(placeholder);for(const method of methods){const option=document.createElement('option');option.value=method;option.textContent=METHOD_UI[method];select.append(option);}select.value=methods.includes(previous)?previous:'';}
+ $('editCentralHint').hidden=!!methods.length;updateEditPreview();
+}
+function updateEditPreview(){
+ const amount=parseAmount($('editAmount').value),svc={type:$('editPlatform').value,paymentMethod:$('editMethod').disabled?null:$('editMethod').value,amountCents:amount||0};
+ const pct=editTarget?commissionRate(svc,editTarget.session):0;
+ $('editGross').textContent=amount===null?'—':money(amount);
+ $('editCommission').textContent=amount===null?'—':'−'+money(commissionCents(svc,editTarget.session));
+ $('editRate').textContent='Comisión'+(pct?' ('+pct+' %)':'');
+ $('editNet').textContent=amount===null?'—':money(netCents(svc,editTarget.session));
+}
 async function updateService(sessionId,serviceId,action){try{
-  const session=await readOne(sessionId);if(!session||session.closedAt)return notify('Jornada ya cerrada');const ix=session.services.findIndex(x=>x.id===serviceId);if(ix<0)return;
-  const svc=session.services[ix];
-  if(action==='delete'){if(!confirm(`¿Eliminar ${serviceLabel(svc,session)} de ${money(svc.amountCents)}?`))return;session.services.splice(ix,1);}else{
-    const proposed=prompt(`Nuevo importe de ${serviceLabel(svc,session)} (€):`,(svc.amountCents/100).toFixed(2).replace('.',','));if(proposed===null)return;
-    const n=parseAmount(proposed);if(n===null){notify('Importe no válido');return;}svc.amountCents=n;svc.editedAt=new Date().toISOString();
-  }
-  await writeOne(session);active=session;render();showList(session);notify(action==='delete'?'Servicio eliminado':'Importe corregido');
+ const session=await readOne(sessionId);if(!session||session.closedAt)return notify('Jornada ya cerrada');const ix=session.services.findIndex(x=>x.id===serviceId);if(ix<0)return;
+ const svc=session.services[ix];
+ if(action==='edit'){
+  editTarget={sessionId,serviceId,session,fingerprint:serviceFingerprint(svc)};
+  $('editPlatform').replaceChildren();for(const type of TYPES){const option=document.createElement('option');option.value=type.id;option.textContent=type.name;$('editPlatform').append(option);}
+  $('editPlatform').value=svc.type;$('editAmount').value=(svc.amountCents/100).toFixed(2).replace('.',',');
+  $('editOriginalTime').textContent='Fecha y hora del servicio: '+dateText(svc.at)+'. Se conservarán al corregirlo.';
+  editMethodOptions(svc.paymentMethod);showModal('editDialog');return;
+ }
+ if(!confirm(`¿Eliminar ${serviceLabel(svc,session)} de ${money(svc.amountCents)}?`))return;
+ session.services.splice(ix,1);await writeOne(session);active=session;render();showList(session);notify('Servicio eliminado');
 }catch(e){markError(e);}}
+async function saveServiceEdit(event){
+ event.preventDefault();if(!editTarget||editBusy)return;
+ const target=editTarget,type=$('editPlatform').value,methods=METHODS[type]||[],method=methods.length?$('editMethod').value:null,amount=parseAmount($('editAmount').value);
+ if(!TYPES.some(t=>t.id===type)||amount===null){notify('Elige una plataforma e introduce un importe válido mayor que cero');return;}
+ if(methods.length&&!methods.includes(method)){notify('Selecciona Efectivo, TPV o App según la plataforma');return;}
+ editBusy=true;$('editSave').disabled=true;
+ try{
+  const latest=await readOne(target.sessionId);if(!latest||latest.closedAt){notify('La jornada ya está cerrada. No se ha modificado el servicio.');return;}
+  const svc=latest.services.find(v=>v.id===target.serviceId);if(!svc){notify('El servicio ya no existe. No se ha guardado la corrección.');return;}
+  if(serviceFingerprint(svc)!==target.fingerprint){notify('El servicio ha cambiado. Cierra el editor y vuelve a abrirlo para revisar los datos.');return;}
+  if(svc.type===type&&(svc.paymentMethod??null)===method&&svc.amountCents===amount){hideModal('editDialog');editTarget=null;return;}
+  svc.type=type;svc.paymentMethod=method;svc.amountCents=amount;svc.editedAt=new Date().toISOString();
+  await writeOne(latest);active=latest;render();hideModal('editDialog');editTarget=null;showList(latest);
+  monthSnapshot=null;notify('Servicio corregido. Totales y liquidación recalculados.');
+ }catch(e){markError(e);}finally{editBusy=false;$('editSave').disabled=false;}
+}
 // Solo las jornadas cerradas se pueden borrar. Siempre se confirma la operación.
 async function deleteSession(sessionId,origin){
  try{
@@ -451,7 +488,7 @@ function askPdfFilename(kind){
  document.body.style.overflow='hidden';
  $('filenameInput').focus();$('filenameInput').select();
 }
-function closeFilenameDialog(){pendingPdfExport=null;$('filenameDialog').hidden=true;if(['startDialog','entryDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';}
+function closeFilenameDialog(){pendingPdfExport=null;$('filenameDialog').hidden=true;if(['startDialog','entryDialog','editDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'].every(k=>$(k).hidden))document.body.style.overflow='';}
 function confirmPdfFilename(event){
  event.preventDefault();
  const safe=cleanPdfFilename($('filenameInput').value);
@@ -469,6 +506,9 @@ function attach(){
   $('amount').addEventListener('input',updateCommissionPreview);
   $('closeBtn').addEventListener('click',()=>closeSession());
   $('entryForm').addEventListener('submit',addService);
+  $('editForm').addEventListener('submit',saveServiceEdit);
+  $('editPlatform').addEventListener('change',()=>editMethodOptions($('editMethod').value));
+  $('editMethod').addEventListener('change',updateEditPreview);$('editAmount').addEventListener('input',updateEditPreview);
   $('partialsBtn').addEventListener('click',async()=>{try{const s=await readOne(active.id);active=s;render();showList(s);}catch(e){markError(e);}});
   $('historyBtn').addEventListener('click',()=>{$('historyModeFilter').value=currentUsageMode();showHistory();});
   $('historyModeFilter').addEventListener('change',showHistory);$('monthModeFilter').addEventListener('change',()=>refreshMonth().catch(markError));$('usageMode').addEventListener('change',()=>{updateUsageFields();loadPersonName();});
@@ -483,7 +523,7 @@ function attach(){
   $('filenameForm').addEventListener('submit',confirmPdfFilename);
   document.querySelectorAll('[data-dismiss=filename]').forEach(b=>b.addEventListener('click',closeFilenameDialog));
   document.querySelectorAll('[data-dismiss]').forEach(b=>b.addEventListener('click',()=>hideModal(b.dataset.dismiss+'Dialog')));
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')for(const d of ['startDialog','entryDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'])if(!$(d).hidden)hideModal(d);if(!$('filenameDialog').hidden)closeFilenameDialog();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')for(const d of ['startDialog','entryDialog','editDialog','listDialog','historyDialog','monthlyDialog','instructionsDialog','transferDialog','installDialog'])if(!$(d).hidden)hideModal(d);if(!$('filenameDialog').hidden)closeFilenameDialog();});
   $('themeBtn').addEventListener('click',()=>{const next=!document.body.classList.contains('light');document.body.classList.toggle('light',next);localStorage.setItem('taxi-theme',next?'light':'dark');$('themeBtn').textContent=next?'🌙':'☀️';});
   try{const light=localStorage.getItem('taxi-theme')==='light';document.body.classList.toggle('light',light);$('themeBtn').textContent=light?'🌙':'☀️';}catch(e){console.warn('Preferencia de tema no disponible',e);}
   setInterval(()=>{$('clock').textContent=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'});},500);
